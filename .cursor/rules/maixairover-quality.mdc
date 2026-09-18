@@ -1,0 +1,17 @@
+---
+description: MaixAiRover code quality — SOLID, contracts, size limits
+globs:
+  - maixcam/**/*.py
+  - tests/**/*.py
+  - tools/**/*.py
+alwaysApply: true
+---
+
+# MaixAiRover quality rules
+
+- SOLID; 1 class per file; file under 400 lines; class under 30 methods.
+- Docstrings on every public class and public method.
+- Forbidden: `getattr`, `setattr`, tuple payloads, anonymous dicts as DTOs.
+- Prefer dataclasses with named fields for all cross-boundary data.
+- Hardware behind `I2cBus` port; default config may use stub.
+- Prefer structural simplification (thermo-nuclear) over local cleanup-only edits.

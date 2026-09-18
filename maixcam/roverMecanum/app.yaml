@@ -1,0 +1,63 @@
+id: maix_ai_rover
+name: Maix_AI_Rover
+version: 1.0.0
+author: Nutz95
+icon: app.png
+desc: Mecanum rover (Hiwonder I2C) with Xbox BLE control on MaixCAM2. Phase 1A uses stub I2C.
+files:
+  - lib\__init__.py
+  - lib\axis_curve.py
+  - lib\axis_pair.py
+  - lib\battery_reading.py
+  - lib\bluetooth_command_result.py
+  - lib\bluetooth_installer.py
+  - lib\bluetooth_pairing_service.py
+  - lib\bluetoothctl_runner.py
+  - lib\bluetoothctl_session.py
+  - lib\camera_preview_service.py
+  - lib\config_store.py
+  - lib\controller_mapping_engine.py
+  - lib\controller_scan_result.py
+  - lib\controller_state.py
+  - lib\drive_action_catalog.py
+  - lib\drive_action_spec.py
+  - lib\drive_command.py
+  - lib\drive_output.py
+  - lib\encoder_counts.py
+  - lib\encoder_odometry.py
+  - lib\evdev_axis_mapper.py
+  - lib\evdev_constants.py
+  - lib\evdev_device_finder.py
+  - lib\evdev_ioctl.py
+  - lib\evdev_reader.py
+  - lib\evdev_sysfs_reader.py
+  - lib\evdev_xbox_layout.py
+  - lib\hiwonder_motor_driver.py
+  - lib\hiwonder_registers.py
+  - lib\i2c_bus.py
+  - lib\i2c_bus_factory.py
+  - lib\i2c_config.py
+  - lib\i2c_transaction.py
+  - lib\maix_i2c_bus.py
+  - lib\mecanum_mixer.py
+  - lib\motion_controller.py
+  - lib\motion_stack_factory.py
+  - lib\motor_config.py
+  - lib\paths.py
+  - lib\rover_motion_client.py
+  - lib\speed_bumper_edges.py
+  - lib\stub_i2c_bus.py
+  - lib\touch_point.py
+  - lib\ui_drawer.py
+  - lib\ui_rect.py
+  - lib\wheel_speeds.py
+  - lib\xbox_input_service.py
+  - lib\xbox_rover_app.py
+  - lib\xbox_snapshot.py
+  - app.png
+  - app.yaml
+  - config.json
+  - icon.png
+  - icon.svg
+  - main.py
+  - README.md

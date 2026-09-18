@@ -1,0 +1,23 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+*.egg-info/
+.DS_Store
+
+# PlatformIO / ESP32 build outputs (never commit)
+.pio/
+**/.pio/
+*.bin
+*.elf
+*.map
+!resources/**/*.bin
+
+# IDE / local
+.vscode/.browse.c_cpp.db*
+*.code-workspace.bak
+.env
+.env.local
+
+# Generated WiFi secrets for ESP OTA (from SOARM_WIFI_* env)
+esp32/rover_coordinator/include/wifi_secrets.h

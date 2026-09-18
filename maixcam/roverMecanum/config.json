@@ -1,0 +1,86 @@
+{
+  "mapping_revision": 4,
+  "controller_name": "Xbox Wireless Controller",
+  "controller_name_aliases": [
+    "Xbox Series X Controller",
+    "Xbox Series S Controller",
+    "Xbox One Wireless Controller"
+  ],
+  "bluetooth_scan_timeout_sec": 30,
+  "controller_mac": "78:86:2E:AC:8D:03",
+  "camera": {
+    "enabled": true,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "format": "yuv420",
+    "display_fps": 15
+  },
+  "i2c": {
+    "mode": "stub",
+    "id": 6,
+    "addr": 52,
+    "scl": "A1",
+    "scl_function": "I2C6_SCL",
+    "sda": "A0",
+    "sda_function": "I2C6_SDA"
+  },
+  "motors": {
+    "type": 3,
+    "encoder_polarity": 0,
+    "control_mode": "speed",
+    "max_setpoint": 50,
+    "channel_order": ["FL", "FR", "RL", "RR"],
+    "invert": [false, false, false, false],
+    "wheel_diameter_mm": 96,
+    "track_width_mm": 200,
+    "pulses_per_motor_rev": 44,
+    "gear_ratio": 56
+  },
+  "rover": {
+    "max_speed": 255,
+    "send_interval_ms": 30,
+    "deadzone_percent": 5,
+    "axis_sensitivity_percent": 70,
+    "axis_expo": 2.2,
+    "axis_curve": "expo",
+    "speed_step": 5
+  },
+  "mapping": {
+    "axes": {
+      "drive_forward": "left_y",
+      "drive_strafe": "trigger_diff",
+      "drive_spin": "right_x",
+      "drive_pivot": "left_x"
+    },
+    "invert": {
+      "left_y": false,
+      "left_x": false,
+      "right_x": false,
+      "trigger_diff": false
+    },
+    "dpad": {
+      "up": "forward",
+      "down": "backward",
+      "left": "strafe_left",
+      "right": "strafe_right",
+      "up_left": "diag_fl",
+      "up_right": "diag_fr",
+      "down_left": "diag_bl",
+      "down_right": "diag_br"
+    },
+    "buttons": {
+      "btn_a": "stop",
+      "btn_b": null,
+      "btn_x": null,
+      "btn_y": null,
+      "btn_lb": null,
+      "btn_rb": null,
+      "btn_start": null,
+      "btn_select": null
+    }
+  },
+  "evdev": {
+    "layout": "maixcam_bt"
+  }
+}
