@@ -12,14 +12,16 @@ MaixCAM2  --UART 115200-->  ESP32 coordinator  --I2C 0x34-->  Hiwonder motors
 
 | Module | Responsibility |
 |--------|----------------|
-| `main.cpp` | Wire objects; `setup`/`loop` coordination only |
-| `settings.h` | Baud, I2C pins/addr, PWM limits, timeouts, WiFi port |
-| `hiwonder_motor_board.*` | Hiwonder I2C register IO |
+| `main.cpp` | Wire objects; spawn FreeRTOS tasks (cmd + wifi) |
+| `settings.h` | Baud, I2C pins/addr, PWM limits, reverse coast, UART2 pins, task sizes |
+| `hiwonder_motor_board.*` | Hiwonder I2C + reverse coast dead-time |
 | `command_dispatcher.*` | Parse line protocol → motor / wifi |
 | `drive_failsafe.*` | Stop motors if no SPEED/PWM for 1.5 s |
-| `serial_line_reader.*` | USB Serial line framing |
-| `wifi_runtime.*` | STA join, OTA, TCP console lifecycle |
+| `serial_line_reader.*` | LF framing for USB Serial **and** MaixCAM UART |
+| `cam_uart.*` | UART2 on GPIO15 RX / GPIO14 TX |
+| `wifi_runtime.*` | STA join, OTA, TCP console (wifi task) |
 | `protocol_reply.*` | Fan-out `OK`/`ERR` to Serial + WiFi |
+| `coordinator_lock.*` | Recursive mutex shared by cmd/wifi paths |
 | `wifi_console.*` | TCP server on port 2333 |
 
 ## Wiring

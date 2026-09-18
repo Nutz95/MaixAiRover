@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "coordinator_lock.h"
 #include "drive_failsafe.h"
 #include "hiwonder_motor_board.h"
 #include "protocol_reply.h"
@@ -16,11 +17,13 @@ CommandDispatcher::CommandDispatcher(
   HiwonderMotorBoard &motors,
   DriveFailsafe &failsafe,
   ProtocolReply &reply,
-  WifiRuntime &wifi)
+  WifiRuntime &wifi,
+  CoordinatorLock &lock)
   : motors_(motors),
     failsafe_(failsafe),
     reply_(reply),
-    wifi_(wifi) {}
+    wifi_(wifi),
+    lock_(lock) {}
 
 void CommandDispatcher::bindWifiThunk() {
   s_instance = this;
@@ -43,6 +46,7 @@ int8_t CommandDispatcher::clampI8(long value, int lo, int hi) {
 }
 
 void CommandDispatcher::handleLine(char *line) {
+  CoordinatorGuard guard(lock_);
   while (*line == ' ' || *line == '\t') {
     ++line;
   }

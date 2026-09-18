@@ -9,6 +9,7 @@ class DriveFailsafe;
 class HiwonderMotorBoard;
 class ProtocolReply;
 class WifiRuntime;
+class CoordinatorLock;
 
 class CommandDispatcher {
  public:
@@ -16,7 +17,8 @@ class CommandDispatcher {
     HiwonderMotorBoard &motors,
     DriveFailsafe &failsafe,
     ProtocolReply &reply,
-    WifiRuntime &wifi);
+    WifiRuntime &wifi,
+    CoordinatorLock &lock);
 
   /** Handle one NUL-terminated command line (mutates whitespace in place). */
   void handleLine(char *line);
@@ -41,5 +43,6 @@ class CommandDispatcher {
   DriveFailsafe &failsafe_;
   ProtocolReply &reply_;
   WifiRuntime &wifi_;
+  CoordinatorLock &lock_;
   static CommandDispatcher *s_instance;
 };

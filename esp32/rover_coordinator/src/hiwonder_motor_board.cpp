@@ -40,20 +40,58 @@ bool HiwonderMotorBoard::readBytes(uint8_t reg, uint8_t *buf, size_t len) const 
   return true;
 }
 
+bool HiwonderMotorBoard::signFlips(int8_t previous, int8_t next) {
+  return previous != 0 && next != 0 && ((previous > 0) != (next > 0));
+}
+
+bool HiwonderMotorBoard::coastIfReversing(int8_t m1, int8_t m2, int8_t m3, int8_t m4) {
+  const bool reverse =
+    signFlips(lastM1_, m1) ||
+    signFlips(lastM2_, m2) ||
+    signFlips(lastM3_, m3) ||
+    signFlips(lastM4_, m4);
+  if (!reverse) {
+    return true;
+  }
+  // Brief zero command so H-bridge FETs are not shorted during direction change.
+  const uint8_t z[4] = {0, 0, 0, 0};
+  const uint8_t reg =
+    lastDriveReg_ != 0 ? lastDriveReg_ : RoverSettings::kRegFixedSpeed;
+  if (!writeBytes(reg, z, 4)) {
+    return false;
+  }
+  lastM1_ = lastM2_ = lastM3_ = lastM4_ = 0;
+  delay(RoverSettings::kMotorReverseCoastMs);
+  return true;
+}
+
 bool HiwonderMotorBoard::writeDrive(
-  uint8_t reg, int8_t m1, int8_t m2, int8_t m3, int8_t m4) const {
+  uint8_t reg, int8_t m1, int8_t m2, int8_t m3, int8_t m4) {
+  if (!coastIfReversing(m1, m2, m3, m4)) {
+    return false;
+  }
   const uint8_t payload[4] = {
     static_cast<uint8_t>(m1),
     static_cast<uint8_t>(m2),
     static_cast<uint8_t>(m3),
     static_cast<uint8_t>(m4),
   };
-  return writeBytes(reg, payload, 4);
+  if (!writeBytes(reg, payload, 4)) {
+    return false;
+  }
+  lastDriveReg_ = reg;
+  lastM1_ = m1;
+  lastM2_ = m2;
+  lastM3_ = m3;
+  lastM4_ = m4;
+  return true;
 }
 
 int HiwonderMotorBoard::scan(bool announce) const {
   int found = 0;
   bool sawMotor = false;
+  bool sawMag = false;
+  bool sawImu = false;
   if (announce) {
     Serial.println("I2C scan...");
   }
@@ -66,6 +104,12 @@ int HiwonderMotorBoard::scan(bool announce) const {
       if (addr == RoverSettings::kMotorI2cAddress) {
         Serial.print(" <- Hiwonder");
         sawMotor = true;
+      } else if (addr == RoverSettings::kAk09918I2cAddress) {
+        Serial.print(" <- AK09918 mag");
+        sawMag = true;
+      } else if (addr == RoverSettings::kQmi8658I2cAddress) {
+        Serial.print(" <- QMI8658 IMU");
+        sawImu = true;
       }
       Serial.println();
       found++;
@@ -73,14 +117,16 @@ int HiwonderMotorBoard::scan(bool announce) const {
   }
   if (announce) {
     Serial.printf(
-      "  %d device(s)%s\n",
+      "  %d device(s)%s%s%s\n",
       found,
-      sawMotor ? "" : " - 0x34 MISSING");
+      sawMotor ? "" : " - 0x34 MISSING",
+      sawMag ? "" : "",
+      sawImu ? "" : "");
   }
   return found;
 }
 
-bool HiwonderMotorBoard::initMotors(uint8_t motorType, uint8_t polarity) const {
+bool HiwonderMotorBoard::initMotors(uint8_t motorType, uint8_t polarity) {
   if (!writeBytes(RoverSettings::kRegMotorType, &motorType, 1)) {
     return false;
   }
@@ -89,19 +135,21 @@ bool HiwonderMotorBoard::initMotors(uint8_t motorType, uint8_t polarity) const {
   return writeBytes(RoverSettings::kRegEncoderPolarity, &pol, 1);
 }
 
-bool HiwonderMotorBoard::setSpeed(int8_t m1, int8_t m2, int8_t m3, int8_t m4) const {
+bool HiwonderMotorBoard::setSpeed(int8_t m1, int8_t m2, int8_t m3, int8_t m4) {
   return writeDrive(RoverSettings::kRegFixedSpeed, m1, m2, m3, m4);
 }
 
-bool HiwonderMotorBoard::setPwm(int8_t m1, int8_t m2, int8_t m3, int8_t m4) const {
+bool HiwonderMotorBoard::setPwm(int8_t m1, int8_t m2, int8_t m3, int8_t m4) {
   return writeDrive(RoverSettings::kRegFixedPwm, m1, m2, m3, m4);
 }
 
-bool HiwonderMotorBoard::stop() const {
+bool HiwonderMotorBoard::stop() {
   const uint8_t z[4] = {0, 0, 0, 0};
-  const bool ok = writeBytes(RoverSettings::kRegFixedSpeed, z, 4);
+  const bool okSpeed = writeBytes(RoverSettings::kRegFixedSpeed, z, 4);
   writeBytes(RoverSettings::kRegFixedPwm, z, 4);
-  return ok;
+  lastM1_ = lastM2_ = lastM3_ = lastM4_ = 0;
+  lastDriveReg_ = RoverSettings::kRegFixedSpeed;
+  return okSpeed;
 }
 
 bool HiwonderMotorBoard::readBatteryMv(uint16_t *outMv) const {

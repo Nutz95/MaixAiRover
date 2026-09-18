@@ -1,13 +1,12 @@
 #include "serial_line_reader.h"
 
-#include <Arduino.h>
-
 #include "command_dispatcher.h"
 #include "protocol_reply.h"
 
-void SerialLineReader::poll(CommandDispatcher &dispatcher, ProtocolReply &reply) {
-  while (Serial.available() > 0) {
-    const char c = static_cast<char>(Serial.read());
+void SerialLineReader::poll(
+  Stream &stream, CommandDispatcher &dispatcher, ProtocolReply &reply) {
+  while (stream.available() > 0) {
+    const char c = static_cast<char>(stream.read());
     if (c == '\r') {
       continue;
     }

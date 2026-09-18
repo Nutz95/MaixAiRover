@@ -1,8 +1,9 @@
 /**
- * Accumulate USB Serial bytes into LF-terminated command lines.
+ * Accumulate Stream bytes into LF-terminated command lines.
  */
 #pragma once
 
+#include <Arduino.h>
 #include <stddef.h>
 
 #include "settings.h"
@@ -12,8 +13,11 @@ class ProtocolReply;
 
 class SerialLineReader {
  public:
-  /** Read available Serial bytes and dispatch complete lines. */
-  void poll(CommandDispatcher &dispatcher, ProtocolReply &reply);
+  /**
+   * Read available bytes from ``stream`` and dispatch complete lines.
+   * Used for USB Serial and MaixCAM UART.
+   */
+  void poll(Stream &stream, CommandDispatcher &dispatcher, ProtocolReply &reply);
 
  private:
   char lineBuf_[RoverSettings::kLineBufferSize];
