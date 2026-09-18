@@ -8,6 +8,20 @@ from MaixCAM2 (or a PC) over UART.
 MaixCAM2  --UART 115200-->  ESP32 coordinator  --I2C 0x34-->  Hiwonder motors
 ```
 
+## Firmware layout (`src/`)
+
+| Module | Responsibility |
+|--------|----------------|
+| `main.cpp` | Wire objects; `setup`/`loop` coordination only |
+| `settings.h` | Baud, I2C pins/addr, PWM limits, timeouts, WiFi port |
+| `hiwonder_motor_board.*` | Hiwonder I2C register IO |
+| `command_dispatcher.*` | Parse line protocol → motor / wifi |
+| `drive_failsafe.*` | Stop motors if no SPEED/PWM for 1.5 s |
+| `serial_line_reader.*` | USB Serial line framing |
+| `wifi_runtime.*` | STA join, OTA, TCP console lifecycle |
+| `protocol_reply.*` | Fan-out `OK`/`ERR` to Serial + WiFi |
+| `wifi_console.*` | TCP server on port 2333 |
+
 ## Wiring
 
 | Waveshare IIC | Hiwonder |

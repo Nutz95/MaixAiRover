@@ -2,14 +2,16 @@
 
 #include <WiFi.h>
 
+#include "settings.h"
+
 namespace WifiConsole {
 namespace {
 
 WiFiServer *server = nullptr;
 WiFiClient client;
-uint16_t listenPort = 2333;
+uint16_t listenPort = RoverSettings::kWifiConsolePort;
 bool started = false;
-char lineBuf[96];
+char lineBuf[RoverSettings::kLineBufferSize];
 size_t lineLen = 0;
 LineHandler handler = nullptr;
 
