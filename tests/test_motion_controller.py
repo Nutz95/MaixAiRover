@@ -20,14 +20,14 @@ def _controller() -> MotionController:
   driver = HiwonderMotorDriver(bus, 0x34, cfg)
   mixer = MecanumMixer(max_setpoint=50)
   odo = EncoderOdometry(cfg)
-  motion = MotionController(driver, mixer, odo, cfg)
+  motion = MotionController(mixer, odo, cfg, wheel_driver=driver)
   motion.initialize()
   return motion
 
 
 def test_turn_degrees_completes_on_stub():
   motion = _controller()
-  ok = motion.turn_degrees(20.0, speed=20, timeout_s=2.0, poll_s=0.0)
+  ok = motion.turn_degrees(20.0, setpoint=20, timeout_s=2.0, poll_s=0.0)
   assert ok is True
   assert motion.last_wheel_speeds().front_left == 0
 

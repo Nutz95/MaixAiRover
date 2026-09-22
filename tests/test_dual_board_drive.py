@@ -8,6 +8,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "maixcam", "roverMecanum"))
 
 from lib.dual_board_drive_port import DualBoardDrivePort
+from lib.encoder_pair import EncoderPair
 from lib.esp_link_config import EspLinkConfig
 from lib.esp_pair_drive_board import EspPairDriveBoard
 from lib.null_rear_drive_board import NullRearDriveBoard
@@ -29,16 +30,16 @@ class _FakeFront:
     self.stopped += 1
     self.pairs.append((0, 0))
 
-  def read_pair_encoders(self) -> tuple[int, int]:
-    return (1, 2)
+  def read_pair_encoders(self) -> EncoderPair:
+    return EncoderPair(left=1, right=2)
 
   def clear_encoders(self) -> None:
     return
 
 
 class _FakeRear(_FakeFront):
-  def read_pair_encoders(self) -> tuple[int, int]:
-    return (3, 4)
+  def read_pair_encoders(self) -> EncoderPair:
+    return EncoderPair(left=3, right=4)
 
 
 def test_dual_board_splits_front_rear() -> None:

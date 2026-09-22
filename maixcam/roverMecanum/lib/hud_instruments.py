@@ -5,6 +5,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+from lib.pitch_roll_deg import PitchRollDeg
+
 # 3S LiPo pack on Waveshare 12 V rail.
 LIPO_EMPTY_MV = 10500
 LIPO_FULL_MV = 12600  # 3 × 4.2 V
@@ -46,7 +48,7 @@ def battery_pct(bus_mv: int, empty_mv: int = LIPO_EMPTY_MV, full_mv: int = LIPO_
   return max(0, min(100, int(round((bus_mv - empty_mv) * 100 / span))))
 
 
-def pitch_roll_deg(ax: int, ay: int, az: int) -> tuple[float, float] | None:
+def pitch_roll_deg(ax: int, ay: int, az: int) -> PitchRollDeg | None:
   """Rough pitch/roll from accelerometer (degrees). None if vector ~0."""
   fx, fy, fz = float(ax), float(ay), float(az)
   norm = math.sqrt(fx * fx + fy * fy + fz * fz)
@@ -57,7 +59,7 @@ def pitch_roll_deg(ax: int, ay: int, az: int) -> tuple[float, float] | None:
   fz /= norm
   pitch = math.degrees(math.atan2(-fx, math.sqrt(fy * fy + fz * fz)))
   roll = math.degrees(math.atan2(fy, fz))
-  return pitch, roll
+  return PitchRollDeg(pitch_deg=pitch, roll_deg=roll)
 
 
 def from_telem(telem) -> HudInstruments:
@@ -75,13 +77,31 @@ def from_telem(telem) -> HudInstruments:
   if telem.has_imu:
     pr = pitch_roll_deg(telem.ax, telem.ay, telem.az)
     if pr is not None:
-      pitch, roll = pr
+      pitch = pr.pitch_deg
+      roll = pr.roll_deg
   pct = None
   bus = None
   if telem.has_ina:
     bus = int(telem.bus_mv)
     pct = battery_pct(bus)
   return HudInstruments(heading, cardinal, pitch, roll, pct, bus)
+
+
+def from_yahboom_imu(attitude) -> HudInstruments:
+  """Build HUD instruments from YahboomImuAttitude (yaw as heading)."""
+  if attitude is None:
+    return HudInstruments(None, None, None, None, None, None)
+  yaw = float(attitude.yaw_deg) % 360.0
+  if yaw < 0.0:
+    yaw += 360.0
+  return HudInstruments(
+    heading_deg=yaw,
+    cardinal=cardinal_fr(yaw),
+    pitch_deg=float(attitude.pitch_deg),
+    roll_deg=float(attitude.roll_deg),
+    battery_pct=None,
+    bus_mv=None,
+  )
 
 
 def _self_check() -> None:
@@ -96,7 +116,7 @@ def _self_check() -> None:
   h = heading_deg(100, 0)
   assert h is not None and abs(h - 0.0) < 1e-6
   pr = pitch_roll_deg(0, 0, 1000)
-  assert pr is not None and abs(pr[0]) < 1.0 and abs(pr[1]) < 1.0
+  assert pr is not None and abs(pr.pitch_deg) < 1.0 and abs(pr.roll_deg) < 1.0
 
 
 _self_check()

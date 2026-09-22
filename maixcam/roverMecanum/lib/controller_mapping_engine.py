@@ -7,6 +7,7 @@ from lib.dpad_direction import DpadDirection
 from lib.drive_action import DriveAction
 from lib.drive_action_catalog import DriveActionCatalog
 from lib.drive_output import DriveOutput
+from lib.rover_config import RoverConfig
 
 
 class ControllerMappingEngine:
@@ -21,10 +22,10 @@ class ControllerMappingEngine:
     self._invert = set()
     self._dpad = {}
     self._buttons = {}
-    self._deadzone_percent = 2
+    self._deadzone_percent = 0
     self._sensitivity = 0.7
     self._expo = 2.2
-    self._curve = "expo"
+    self._curve = "log"
     self.update_config(config)
 
   def update_config(self, config: dict) -> None:
@@ -34,7 +35,9 @@ class ControllerMappingEngine:
     invert = mapping.get("invert", {}) if isinstance(mapping.get("invert"), dict) else {}
     dpad_map = mapping.get("dpad", {}) if isinstance(mapping.get("dpad"), dict) else {}
     buttons = mapping.get("buttons", {}) if isinstance(mapping.get("buttons"), dict) else {}
-    rover = config.get("rover", {}) if isinstance(config.get("rover"), dict) else {}
+    rover = RoverConfig.from_mapping(
+      config.get("rover", {}) if isinstance(config.get("rover"), dict) else {},
+    )
 
     self._forward_src = AxisSource.from_config(
       axes_map.get("drive_forward"), AxisSource.LEFT_Y,
@@ -67,11 +70,10 @@ class ControllerMappingEngine:
       if button is not None and action is not None:
         self._buttons[button] = action
 
-    self._deadzone_percent = int(rover.get("deadzone_percent", 2))
-    self._sensitivity = max(1, min(100, int(rover.get("axis_sensitivity_percent", 70)))) / 100.0
-    self._expo = max(0.3, min(3.0, float(rover.get("axis_expo", 2.2))))
-    curve = rover.get("axis_curve", "expo")
-    self._curve = curve if isinstance(curve, str) else "expo"
+    self._deadzone_percent = rover.deadzone_percent
+    self._sensitivity = rover.axis_sensitivity_percent / 100.0
+    self._expo = rover.axis_expo
+    self._curve = rover.axis_curve
 
   def compute(self, state) -> DriveOutput:
     """Build DriveOutput from a ControllerState snapshot."""

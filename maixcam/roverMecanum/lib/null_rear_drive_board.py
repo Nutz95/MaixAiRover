@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from lib.encoder_pair import EncoderPair
+
 
 class NullRearDriveBoard:
   """Accepts RL/RR setpoints and discards them (rear board not present)."""
@@ -18,9 +20,9 @@ class NullRearDriveBoard:
     """No-op."""
     return
 
-  def read_pair_encoders(self) -> tuple[int, int]:
+  def read_pair_encoders(self) -> EncoderPair:
     """Rear encoders unavailable."""
-    return (0, 0)
+    return EncoderPair()
 
   def clear_encoders(self) -> None:
     """No-op."""

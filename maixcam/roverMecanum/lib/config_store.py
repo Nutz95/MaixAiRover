@@ -5,6 +5,7 @@ import os
 import tempfile
 
 from lib.paths import resolve_config_path
+from lib.rover_config import RoverConfig
 
 
 class ConfigStore:
@@ -83,9 +84,10 @@ class ConfigStore:
       self.load()
     return self._data
 
-  def rover_settings(self):
-    """Return rover tuning block (always from latest in-memory config)."""
-    return dict(self.get().get("rover", {}))
+  def rover_settings(self) -> RoverConfig:
+    """Typed rover tuning from the in-memory config (no disk re-read)."""
+    raw = self.get().get("rover", {})
+    return RoverConfig.from_mapping(raw if isinstance(raw, dict) else {})
 
   def set_controller_mac(self, mac):
     """Persist the paired controller MAC address."""
@@ -105,11 +107,11 @@ class ConfigStore:
     print(
       "config:"
       f" path={self.path}"
-      f" max_speed={rover.get('max_speed', 255)}"
-      f" deadzone={rover.get('deadzone_percent', 5)}%"
-      f" curve={rover.get('axis_curve', 'expo')}"
-      f" sensitivity={rover.get('axis_sensitivity_percent', 100)}%"
-      f" send_ms={rover.get('send_interval_ms', 30)}"
+      f" max_speed={rover.max_speed}"
+      f" deadzone={rover.deadzone_percent}%"
+      f" curve={rover.axis_curve}"
+      f" sensitivity={rover.axis_sensitivity_percent}%"
+      f" send_ms={rover.send_interval_ms}"
     )
 
   def _template_path(self):
@@ -146,7 +148,7 @@ class ConfigStore:
         f" {target_revision} (forward=left_y strafe=triggers spin=right_x pivot=left_x)"
       )
 
-    for section in ("rover", "mapping", "evdev", "camera", "i2c", "motors", "esp"):
+    for section in ("rover", "mapping", "evdev", "camera", "i2c", "motors", "esp", "yahboom"):
       if section not in base:
         continue
       if section not in self._data:
@@ -157,6 +159,9 @@ class ConfigStore:
       for key, value in base[section].items():
         if key not in self._data[section]:
           self._data[section][key] = value
+    if "drive_backend" not in self._data and "drive_backend" in base:
+      self._data["drive_backend"] = base["drive_backend"]
+      changed = True
     if "axes" in self._data.get("mapping", {}):
       for key, value in base["mapping"]["axes"].items():
         if key not in self._data["mapping"]["axes"]:

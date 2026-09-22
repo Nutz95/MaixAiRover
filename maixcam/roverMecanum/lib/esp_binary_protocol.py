@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import struct
+
+from lib.esp_parsed_frame import EspParsedFrame
+
 SYNC = 0xA5
 MAX_PAYLOAD = 64
 
@@ -37,11 +41,11 @@ def encode_frame(msg_type: int, payload: bytes = b"") -> bytes:
   return bytes((SYNC,)) + body + bytes((crc8(body),))
 
 
-def try_parse_frame(buf: bytes) -> tuple[int, bytes, bytes] | None:
+def try_parse_frame(buf: bytes) -> EspParsedFrame | None:
   """
   Parse one frame from ``buf``.
 
-  Returns ``(type, payload, remainder)``, or None if more bytes are needed.
+  Returns an ``EspParsedFrame``, or None if more bytes are needed.
   On bad CRC / oversized LEN, drops the SYNC and retries on the rest.
   """
   while True:
@@ -66,18 +70,15 @@ def try_parse_frame(buf: bytes) -> tuple[int, bytes, bytes] | None:
     if crc != crc8(body):
       buf = buf[1:]
       continue
-    return (msg_type, body[2:], remainder)
+    return EspParsedFrame(cmd=msg_type, payload=body[2:], rest=remainder)
 
 
 def _self_check() -> None:
-  import struct
-
   frame = encode_frame(CMD_PING)
   assert frame[0] == SYNC
   parsed = try_parse_frame(frame)
   assert parsed is not None
-  msg_type, payload, rem = parsed
-  assert msg_type == CMD_PING and payload == b"" and rem == b""
+  assert parsed.cmd == CMD_PING and parsed.payload == b"" and parsed.rest == b""
   assert struct.calcsize(TELEM_STRUCT) == TELEM_SIZE
 
 

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from lib.esp_binary_client import EspBinaryClient
+from lib.esp_debug_action import EspDebugAction
+from lib.esp_debug_snapshot import EspDebugSnapshot
 from lib.esp_link_pump import EspLinkPump
 from lib.telem_snapshot import TelemSnapshot
 
@@ -13,8 +15,8 @@ class EspDebugSession:
   def __init__(self, uart_port: str = "uart4") -> None:
     self._pump = EspLinkPump(uart_port=uart_port)
 
-  def snapshot(self) -> tuple[bool, str, str, TelemSnapshot | None]:
-    """Return ``(panel_open, link, status, telem)``."""
+  def snapshot(self) -> EspDebugSnapshot:
+    """Return panel/link/telem state as a named snapshot."""
     return self._pump.snapshot()
 
   def telem(self) -> TelemSnapshot | None:
@@ -53,6 +55,6 @@ class EspDebugSession:
     """App exit."""
     self._pump.shutdown()
 
-  def run_action(self, action: str) -> None:
+  def run_action(self, action: EspDebugAction) -> None:
     """Queue a DBG button action on the pump thread."""
     self._pump.queue_dbg(action)

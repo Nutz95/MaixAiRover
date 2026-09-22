@@ -32,8 +32,7 @@ def test_ping_roundtrip() -> None:
   assert frame[3] == crc8(frame[1:3])
   parsed = try_parse_frame(frame)
   assert parsed is not None
-  msg_type, payload, rem = parsed
-  assert msg_type == CMD_PING and payload == b"" and rem == b""
+  assert parsed.cmd == CMD_PING and parsed.payload == b"" and parsed.rest == b""
 
 
 def test_speed_payload() -> None:
@@ -41,10 +40,9 @@ def test_speed_payload() -> None:
   frame = encode_frame(CMD_SPEED, body)
   parsed = try_parse_frame(b"\x00\xff" + frame + b"extra")
   assert parsed is not None
-  msg_type, payload, rem = parsed
-  assert msg_type == CMD_SPEED
-  assert payload == body
-  assert rem == b"extra"
+  assert parsed.cmd == CMD_SPEED
+  assert parsed.payload == body
+  assert parsed.rest == b"extra"
 
 
 def test_bad_crc_resync() -> None:
@@ -56,8 +54,7 @@ def test_bad_crc_resync() -> None:
   first = try_parse_frame(buf)
   # Bad SYNC path drops bytes until a valid frame is found.
   assert first is not None
-  msg_type, payload, rem = first
-  assert msg_type == CMD_PING and payload == b"" and rem == b""
+  assert first.cmd == CMD_PING and first.payload == b"" and first.rest == b""
 
 
 def test_telem_layout() -> None:
@@ -87,9 +84,8 @@ def test_telem_layout() -> None:
   frame = encode_frame(RSP_TELEM, payload)
   parsed = try_parse_frame(frame)
   assert parsed is not None
-  msg_type, body, _ = parsed
-  assert msg_type == RSP_TELEM
-  snap = TelemSnapshot.from_payload(body)
+  assert parsed.cmd == RSP_TELEM
+  snap = TelemSnapshot.from_payload(parsed.payload)
   assert snap.enc_fl == 10 and snap.enc_fr == 20
   assert snap.bus_mv == 12000 and snap.current_ma == -150
   assert snap.has_ina and snap.has_imu and snap.has_mag

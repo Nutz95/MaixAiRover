@@ -4,18 +4,13 @@ from __future__ import annotations
 
 import threading
 import time
-from dataclasses import dataclass
 
 from lib.esp_binary_client import EspBinaryClient
 from lib.esp_binary_protocol import CMD_PWM, CMD_SPEED, CMD_STOP
+from lib.esp_debug_action import EspDebugAction
+from lib.esp_debug_snapshot import EspDebugSnapshot
+from lib.esp_drive_cmd import EspDriveCmd
 from lib.telem_snapshot import TelemSnapshot
-
-
-@dataclass
-class _DriveCmd:
-  fl: int
-  fr: int
-  stop: bool = False
 
 
 class EspLinkPump:
@@ -33,21 +28,26 @@ class EspLinkPump:
     self._link = ""
     self._status = ""
     self._telem: TelemSnapshot | None = None
-    self._drive: _DriveCmd | None = None
+    self._drive: EspDriveCmd | None = None
     self._drive_dirty = False
     self._panel_open = False
     self._wanted = False
     self._stop = threading.Event()
     self._exit = threading.Event()
     self._alive = False
-    self._dbg_action: str | None = None
+    self._dbg_action: EspDebugAction | None = None
     self._wake = threading.Event()
     self._stop_acked = False
 
-  def snapshot(self) -> tuple[bool, str, str, TelemSnapshot | None]:
-    """Return ``(panel_open, link, status, telem)``."""
+  def snapshot(self) -> EspDebugSnapshot:
+    """Return panel visibility, link name, status, and latest TELEM."""
     with self._lock:
-      return self._panel_open, self._link, self._status, self._telem
+      return EspDebugSnapshot(
+        panel_open=self._panel_open,
+        link_name=self._link,
+        status=self._status,
+        telem=self._telem,
+      )
 
   def telem(self) -> TelemSnapshot | None:
     """Latest TELEM (may be None)."""
@@ -106,14 +106,14 @@ class EspLinkPump:
     """Queue latest FL/FR (non-blocking). ``(0,0)`` becomes STOP."""
     with self._lock:
       if fl == 0 and fr == 0:
-        self._drive = _DriveCmd(0, 0, stop=True)
+        self._drive = EspDriveCmd(0, 0, stop=True)
       else:
-        self._drive = _DriveCmd(int(fl), int(fr), stop=False)
+        self._drive = EspDriveCmd(int(fl), int(fr), stop=False)
       self._drive_dirty = True
     self._wake.set()
 
-  def queue_dbg(self, action: str) -> None:
-    """Queue one DBG button action (ping/stop/fwd/init)."""
+  def queue_dbg(self, action: EspDebugAction) -> None:
+    """Queue one DBG button action."""
     with self._lock:
       self._dbg_action = action
     self._wake.set()
@@ -187,7 +187,7 @@ class EspLinkPump:
       self._alive = False
       self._link = ""
 
-  def _do_drive_fast(self, client: EspBinaryClient, drive: _DriveCmd) -> None:
+  def _do_drive_fast(self, client: EspBinaryClient, drive: EspDriveCmd) -> None:
     """SPEED fire-and-forget; first STOP after motion waits for ACK, then FAF."""
     if drive.stop:
       if not self._stop_acked:
@@ -221,29 +221,25 @@ class EspLinkPump:
     client.drain(max_s=0.002)
     return None
 
-  def _do_dbg(self, client: EspBinaryClient, action: str) -> None:
+  def _do_dbg(self, client: EspBinaryClient, action: EspDebugAction) -> None:
     try:
-      if action == "ping":
+      if action is EspDebugAction.PING:
         client.ping(timeout_s=0.25)
         msg = "PING ok"
-      elif action == "stop":
+      elif action is EspDebugAction.STOP:
         client.write_frame(CMD_STOP, b"")
         client.drain(max_s=0.02)
         msg = "STOP ok"
-      elif action == "fwd":
+      elif action is EspDebugAction.FWD:
         client.write_speed(20, 20, 0, 0)
         client.drain(max_s=0.02)
         msg = "SPEED 20 20"
-      elif action == "init":
+      elif action is EspDebugAction.INIT:
         msg = client.text_command("INIT")
-      elif action == "pwm":
-        client.write_frame(CMD_PWM, bytes((40, 40, 0, 0)))
-        client.drain(max_s=0.02)
-        msg = "PWM 40 40"
       else:
         msg = f"unknown {action}"
       with self._lock:
         self._status = msg
     except Exception as exc:
       with self._lock:
-        self._status = f"{action}: {exc}"
+        self._status = f"{action.value}: {exc}"

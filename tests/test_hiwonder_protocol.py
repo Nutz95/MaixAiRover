@@ -57,14 +57,14 @@ def test_register_name():
   assert HiwonderRegisters.FIXED_SPEED.name == "FIXED_SPEED"
 
 
-def test_factory_reads_battery_at_create():
+def test_factory_creates_stub_client():
   client = MotionStackFactory().create(
     {"i2c": {"mode": "stub", "addr": 52}, "motors": {}}
   )
-  reading = client.last_battery()
-  assert reading is not None
-  assert reading.millivolts == 12000
+  assert client.is_stub()
   assert client.last_i2c_error() == ""
+  # Battery ADC is Hiwonder-only; stub create no longer auto-reads it.
+  assert client.last_battery() is None
 
 
 def test_battery_and_encoders_roundtrip():

@@ -1,5 +1,8 @@
 """Wire config into a ready MotionController stack."""
 
+from lib.drive_backend_config import DriveBackendConfig
+from lib.drive_backend_kind import DriveBackendKind
+from lib.drive_command_chassis_mapper import DriveCommandChassisMapper
 from lib.dual_board_drive_port import DualBoardDrivePort
 from lib.encoder_odometry import EncoderOdometry
 from lib.esp_pair_drive_board import EspPairDriveBoard
@@ -8,14 +11,17 @@ from lib.i2c_bus_factory import I2cBusFactory
 from lib.i2c_config import I2cConfig
 from lib.mecanum_mixer import MecanumMixer
 from lib.motion_controller import MotionController
+from lib.motion_stack_bundle import MotionStackBundle
 from lib.motor_config import MotorConfig
 from lib.null_rear_drive_board import NullRearDriveBoard
 from lib.rover_motion_client import RoverMotionClient
 from lib.stub_i2c_bus import StubI2cBus
+from lib.yahboom_drive_board import YahboomDriveBoard
+from lib.yahboom_serial_transport import YahboomSerialTransport
 
 
 class MotionStackFactory:
-  """Build the motion client (ESP dual-board or legacy stub) from config."""
+  """Build the motion client (ESP dual-board, Yahboom, or legacy stub)."""
 
   def create(self, config: dict) -> RoverMotionClient:
     """Legacy stub/I2C path (host tests). Prefer ``create_esp`` on device."""
@@ -23,7 +29,7 @@ class MotionStackFactory:
     motor_cfg = MotorConfig.from_mapping(config.get("motors", {}))
     bus = I2cBusFactory().create(i2c_cfg)
     driver = HiwonderMotorDriver(bus, i2c_cfg.address, motor_cfg)
-    client = self._wrap(driver, motor_cfg, is_stub=isinstance(bus, StubI2cBus))
+    client = self._wrap_wheels(driver, motor_cfg, is_stub=isinstance(bus, StubI2cBus))
     print(
       f"i2c mode={i2c_cfg.mode} effective="
       f"{'stub' if isinstance(bus, StubI2cBus) else i2c_cfg.mode}"
@@ -35,7 +41,7 @@ class MotionStackFactory:
     config: dict,
     set_front_drive,
     set_rear_drive=None,
-  ) -> RoverMotionClient:
+  ) -> MotionStackBundle:
     """Mecanum mix on Maix → front ESP pump + optional rear pump."""
     motor_cfg = MotorConfig.from_mapping(config.get("motors", {}))
     front = EspPairDriveBoard(set_front_drive, max_setpoint=motor_cfg.max_setpoint)
@@ -46,14 +52,54 @@ class MotionStackFactory:
       rear = NullRearDriveBoard()
       rear_label = "rear stub"
     driver = DualBoardDrivePort(front, rear)
-    client = self._wrap(driver, motor_cfg, is_stub=False)
+    client = self._wrap_wheels(driver, motor_cfg, is_stub=False)
     print(f"drive: mecanum → ESP front (UART pump) + {rear_label}")
-    return client
+    return MotionStackBundle(client=client, yahboom_board=None)
 
-  def _wrap(self, driver, motor_cfg: MotorConfig, *, is_stub: bool) -> RoverMotionClient:
+  def create_yahboom(self, config: dict) -> MotionStackBundle:
+    """Closed-loop chassis on Yahboom (STM32 PID + encoders via set_car_motion)."""
+    motor_cfg = MotorConfig.from_mapping(config.get("motors", {}))
+    backend = DriveBackendConfig.from_root(config)
+    if backend.kind != DriveBackendKind.YAHBOOM:
+      raise ValueError("create_yahboom requires drive_backend=yahboom")
+    yahboom_cfg = backend.yahboom
+    transport = YahboomSerialTransport(yahboom_cfg.port, baud=yahboom_cfg.baud)
+    board = YahboomDriveBoard(transport, yahboom_cfg)
+    mapper = DriveCommandChassisMapper(yahboom_cfg)
+    client = self._wrap_chassis(board, mapper, motor_cfg, is_stub=False)
+    print(f"drive: chassis → Yahboom USB ({yahboom_cfg.port or 'no-port'}) set_car_motion")
+    return MotionStackBundle(client=client, yahboom_board=board)
+
+  def _wrap_wheels(
+    self, driver, motor_cfg: MotorConfig, *, is_stub: bool,
+  ) -> RoverMotionClient:
     mixer = MecanumMixer(max_setpoint=motor_cfg.max_setpoint)
     odometry = EncoderOdometry(motor_cfg)
-    motion = MotionController(driver, mixer, odometry, motor_cfg)
+    motion = MotionController(
+      mixer, odometry, motor_cfg, wheel_driver=driver,
+    )
+    return self._finish(motion, is_stub=is_stub)
+
+  def _wrap_chassis(
+    self,
+    board: YahboomDriveBoard,
+    mapper: DriveCommandChassisMapper,
+    motor_cfg: MotorConfig,
+    *,
+    is_stub: bool,
+  ) -> RoverMotionClient:
+    mixer = MecanumMixer(max_setpoint=motor_cfg.max_setpoint)
+    odometry = EncoderOdometry(motor_cfg)
+    motion = MotionController(
+      mixer,
+      odometry,
+      motor_cfg,
+      chassis_driver=board,
+      chassis_mapper=mapper,
+    )
+    return self._finish(motion, is_stub=is_stub)
+
+  def _finish(self, motion: MotionController, *, is_stub: bool) -> RoverMotionClient:
     client = RoverMotionClient(motion, is_stub=is_stub)
     try:
       motion.initialize(settle_s=0.0)

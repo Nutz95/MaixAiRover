@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Callable
 
+from lib.encoder_pair import EncoderPair
+
 
 class EspPairDriveBoard:
   """Send a left/right wheel pair through a shared ESP link pump."""
@@ -51,9 +53,9 @@ class EspPairDriveBoard:
     self._stop_bursts = self.STOP_BURSTS
     self.set_pair(0, 0)
 
-  def read_pair_encoders(self) -> tuple[int, int]:
+  def read_pair_encoders(self) -> EncoderPair:
     """Encoder totals come from TELEM, not this path."""
-    return (0, 0)
+    return EncoderPair()
 
   def clear_encoders(self) -> None:
     """No-op until INIT is issued on the ESP."""

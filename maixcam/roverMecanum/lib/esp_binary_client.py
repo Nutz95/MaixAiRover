@@ -19,6 +19,7 @@ from lib.esp_binary_protocol import (
   encode_frame,
   try_parse_frame,
 )
+from lib.esp_exchange_result import EspExchangeResult
 from lib.esp_uart_client import EspUartClient
 from lib.esp_usb_client import EspUsbClient
 from lib.telem_snapshot import TelemSnapshot
@@ -109,19 +110,18 @@ class EspBinaryClient:
             parsed = try_parse_frame(self._rx)
             if parsed is None:
               break
-            rsp_type, rsp_payload, remainder = parsed
-            self._rx = remainder
-            if rsp_type == RSP_TELEM:
-              return TelemSnapshot.from_payload(rsp_payload)
+            self._rx = parsed.rest
+            if parsed.cmd == RSP_TELEM:
+              return TelemSnapshot.from_payload(parsed.payload)
         else:
           time.sleep(0.001)
       return None
 
   def ping(self, timeout_s: float = 1.0) -> None:
     """Send CMD_PING and expect RSP_PONG."""
-    msg_type, _ = self._exchange(CMD_PING, b"", expect=RSP_PONG, timeout_s=timeout_s)
-    if msg_type != RSP_PONG:
-      raise RuntimeError(f"unexpected ping rsp 0x{msg_type:02X}")
+    result = self._exchange(CMD_PING, b"", expect=RSP_PONG, timeout_s=timeout_s)
+    if result.cmd != RSP_PONG:
+      raise RuntimeError(f"unexpected ping rsp 0x{result.cmd:02X}")
 
   def stop(self, timeout_s: float = 1.0) -> None:
     """Send CMD_STOP and expect ACK."""
@@ -137,12 +137,10 @@ class EspBinaryClient:
 
   def telem(self, timeout_s: float = 1.0) -> TelemSnapshot:
     """Request a telemetry snapshot (blocking)."""
-    msg_type, payload = self._exchange(
-      CMD_TELEM, b"", expect=RSP_TELEM, timeout_s=timeout_s
-    )
-    if msg_type != RSP_TELEM:
-      raise RuntimeError(f"unexpected telem rsp 0x{msg_type:02X}")
-    return TelemSnapshot.from_payload(payload)
+    result = self._exchange(CMD_TELEM, b"", expect=RSP_TELEM, timeout_s=timeout_s)
+    if result.cmd != RSP_TELEM:
+      raise RuntimeError(f"unexpected telem rsp 0x{result.cmd:02X}")
+    return TelemSnapshot.from_payload(result.payload)
 
   def text_command(self, line: str, timeout_s: float = 1.5) -> str:
     """Send a text line on the same link (INIT/HELP/etc.)."""
@@ -153,12 +151,12 @@ class EspBinaryClient:
       return self._transport.command(line, timeout_s=timeout_s)
 
   def _expect_ack(self, cmd: int, payload: bytes, timeout_s: float) -> None:
-    msg_type, body = self._exchange(cmd, payload, expect=RSP_ACK, timeout_s=timeout_s)
-    if msg_type == RSP_ERR:
-      code = body[0] if body else 0
+    result = self._exchange(cmd, payload, expect=RSP_ACK, timeout_s=timeout_s)
+    if result.cmd == RSP_ERR:
+      code = result.payload[0] if result.payload else 0
       raise RuntimeError(f"ESP ERR code={code}")
-    if msg_type != RSP_ACK:
-      raise RuntimeError(f"unexpected ack rsp 0x{msg_type:02X}")
+    if result.cmd != RSP_ACK:
+      raise RuntimeError(f"unexpected ack rsp 0x{result.cmd:02X}")
 
   def _drain_unlocked(self, max_s: float) -> None:
     if self._transport is None:
@@ -177,7 +175,7 @@ class EspBinaryClient:
     *,
     expect: int,
     timeout_s: float,
-  ) -> tuple[int, bytes]:
+  ) -> EspExchangeResult:
     with self._io_lock:
       if self._transport is None:
         raise RuntimeError("not open")
@@ -192,10 +190,9 @@ class EspBinaryClient:
             parsed = try_parse_frame(self._rx)
             if parsed is None:
               break
-            rsp_type, rsp_payload, remainder = parsed
-            self._rx = remainder
-            if rsp_type == expect or rsp_type == RSP_ERR:
-              return rsp_type, rsp_payload
+            self._rx = parsed.rest
+            if parsed.cmd == expect or parsed.cmd == RSP_ERR:
+              return EspExchangeResult(cmd=parsed.cmd, payload=parsed.payload)
         else:
           time.sleep(0.001)
       self._rx = b""

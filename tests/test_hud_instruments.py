@@ -31,7 +31,7 @@ def test_heading_and_attitude() -> None:
   assert heading_deg(0, 100) is not None
   flat = pitch_roll_deg(0, 0, 1000)
   assert flat is not None
-  assert abs(flat[0]) < 1.0 and abs(flat[1]) < 1.0
+  assert abs(flat.pitch_deg) < 1.0 and abs(flat.roll_deg) < 1.0
 
 
 def test_from_telem_mag_only() -> None:

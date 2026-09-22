@@ -6,17 +6,15 @@ Guidance for humans and coding agents working in this repository.
 
 ```
 MaixCAM2 (Xbox BLE, vision, strategy)
- │ UART4 → Waveshare front (FL/FR)
- │ UART2 → Waveshare rear  (RL/RR)
- ▼
-Waveshare ESP32 General Driver ×2 (rover_coordinator)
- │ TB6612 + encoders
+ │ drive_backend=esp:    UART4/UART2 → Waveshare ESP ×2
+ │ drive_backend=yahboom: USB Host → Yahboom ROS (CH340)
  ▼
 Mecanum wheels
 ```
 
-- **MaixCAM2:** controller + detection + heavy compute; mecanum mix; dual UART pumps.
+- **MaixCAM2:** controller + detection + heavy compute; mecanum mix; backend switch in `config.json`.
 - **ESP32 front/rear:** same firmware; local motor pair + PID; USB + OTA (`maixairover-front` / `maixairover-rear`).
+- **Yahboom STM32:** pre-flashed Rosmaster; `set_motor` + IMU auto-report — see `docs/yahboom.md`.
 - **Hiwonder:** retired.
 - WiFi for OTA: system env `SOARM_WIFI_SSID` / `SOARM_WIFI_PASS`.
 - Device IPs: `esp32/rover_coordinator/devices.json`.

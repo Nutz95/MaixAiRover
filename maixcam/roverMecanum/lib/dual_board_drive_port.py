@@ -30,9 +30,14 @@ class DualBoardDrivePort:
 
   def read_encoders(self) -> EncoderCounts:
     """Merge front (m1/m2) and rear (m3/m4) encoder totals."""
-    f = self._front.read_pair_encoders()
-    r = self._rear.read_pair_encoders()
-    return EncoderCounts(m1=f[0], m2=f[1], m3=r[0], m4=r[1])
+    front_pair = self._front.read_pair_encoders()
+    rear_pair = self._rear.read_pair_encoders()
+    return EncoderCounts(
+      m1=front_pair.left,
+      m2=front_pair.right,
+      m3=rear_pair.left,
+      m4=rear_pair.right,
+    )
 
   def clear_encoders(self) -> None:
     """Clear encoders on both boards."""

@@ -4,8 +4,8 @@ version: 1.0.0
 author: Nutz95
 icon: app.png
 desc: >-
-  Mecanum rover (Hiwonder I2C) with Xbox BLE control on MaixCAM2. Phase 1A uses
-  stub I2C.
+  Mecanum rover with Xbox BLE on MaixCAM2. Drive backends: Yahboom USB
+  closed-loop (default) or Waveshare ESP UART.
 files:
   - lib\__init__.py
   - lib\axis_curve.py
@@ -17,7 +17,11 @@ files:
   - lib\bluetooth_pairing_service.py
   - lib\bluetoothctl_runner.py
   - lib\bluetoothctl_session.py
+  - lib\byte_transport.py
+  - lib\camera_config.py
   - lib\camera_preview_service.py
+  - lib\chassis_motion_port.py
+  - lib\chassis_velocity.py
   - lib\checklist_panel.py
   - lib\config_store.py
   - lib\controller_button.py
@@ -27,20 +31,30 @@ files:
   - lib\cp210x_usb_serial.py
   - lib\debug_panel.py
   - lib\dpad_direction.py
+  - lib\drive_action.py
   - lib\drive_action_catalog.py
   - lib\drive_action_spec.py
-  - lib\drive_action.py
+  - lib\drive_backend_config.py
+  - lib\drive_backend_kind.py
   - lib\drive_command.py
+  - lib\drive_command_chassis_mapper.py
   - lib\drive_output.py
   - lib\dual_board_drive_port.py
   - lib\encoder_counts.py
   - lib\encoder_odometry.py
+  - lib\encoder_pair.py
   - lib\esp_binary_client.py
   - lib\esp_binary_protocol.py
+  - lib\esp_board_endpoints.py
+  - lib\esp_debug_action.py
   - lib\esp_debug_session.py
+  - lib\esp_debug_snapshot.py
+  - lib\esp_drive_cmd.py
+  - lib\esp_exchange_result.py
   - lib\esp_link_config.py
   - lib\esp_link_pump.py
   - lib\esp_pair_drive_board.py
+  - lib\esp_parsed_frame.py
   - lib\esp_uart_client.py
   - lib\esp_usb_client.py
   - lib\esp_wifi_client.py
@@ -55,13 +69,14 @@ files:
   - lib\hiwonder_motor_driver.py
   - lib\hiwonder_registers.py
   - lib\hud_instruments.py
-  - lib\i2c_bus_factory.py
   - lib\i2c_bus.py
+  - lib\i2c_bus_factory.py
   - lib\i2c_config.py
   - lib\i2c_transaction.py
   - lib\maix_i2c_bus.py
   - lib\mecanum_mixer.py
   - lib\motion_controller.py
+  - lib\motion_stack_bundle.py
   - lib\motion_stack_factory.py
   - lib\motor_config.py
   - lib\null_rear_drive_board.py
@@ -69,6 +84,8 @@ files:
   - lib\peripheral_check.py
   - lib\peripheral_checklist.py
   - lib\peripheral_health_checker.py
+  - lib\pitch_roll_deg.py
+  - lib\rover_config.py
   - lib\rover_motion_client.py
   - lib\speed_bumper_edges.py
   - lib\stub_i2c_bus.py
@@ -82,6 +99,13 @@ files:
   - lib\xbox_input_service.py
   - lib\xbox_rover_app.py
   - lib\xbox_snapshot.py
+  - lib\yahboom_config.py
+  - lib\yahboom_drive_board.py
+  - lib\yahboom_encoders.py
+  - lib\yahboom_imu_attitude.py
+  - lib\yahboom_protocol.py
+  - lib\yahboom_rx_parser.py
+  - lib\yahboom_serial_transport.py
   - app.png
   - app.yaml
   - config.json

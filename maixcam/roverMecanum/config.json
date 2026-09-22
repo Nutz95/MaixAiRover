@@ -28,6 +28,14 @@
       "wifi_port": 2333
     }
   },
+  "drive_backend": "yahboom",
+  "yahboom": {
+    "port": "",
+    "baud": 115200,
+    "max_vx": 1.0,
+    "max_vy": 1.0,
+    "max_vz": 5.0
+  },
   "i2c": {
     "mode": "stub",
     "id": 6,
@@ -52,7 +60,7 @@
   "rover": {
     "max_speed": 255,
     "send_interval_ms": 15,
-    "deadzone_percent": 5,
+    "deadzone_percent": 0,
     "axis_sensitivity_percent": 70,
     "axis_expo": 2.2,
     "axis_curve": "log",
