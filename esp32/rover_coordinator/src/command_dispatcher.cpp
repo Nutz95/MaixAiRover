@@ -4,9 +4,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "binary_protocol.h"
+#include "board_sensors.h"
+#include "coordinator_guard.h"
 #include "coordinator_lock.h"
 #include "drive_failsafe.h"
-#include "hiwonder_motor_board.h"
+#include "front_drive_board.h"
 #include "protocol_reply.h"
 #include "settings.h"
 #include "wifi_runtime.h"
@@ -14,16 +17,18 @@
 CommandDispatcher *CommandDispatcher::s_instance = nullptr;
 
 CommandDispatcher::CommandDispatcher(
-  HiwonderMotorBoard &motors,
+  FrontDriveBoard &motors,
   DriveFailsafe &failsafe,
   ProtocolReply &reply,
   WifiRuntime &wifi,
-  CoordinatorLock &lock)
+  CoordinatorLock &lock,
+  BoardSensors &sensors)
   : motors_(motors),
     failsafe_(failsafe),
     reply_(reply),
     wifi_(wifi),
-    lock_(lock) {}
+    lock_(lock),
+    sensors_(sensors) {}
 
 void CommandDispatcher::bindWifiThunk() {
   s_instance = this;
@@ -56,6 +61,12 @@ void CommandDispatcher::handleLine(char *line) {
 
   if (strcmp(line, "PING") == 0) {
     reply_.ok("PONG");
+    return;
+  }
+  if (strcmp(line, "HELP") == 0 || strcmp(line, "?") == 0) {
+    reply_.ok(
+      "text: PING INIT STOP SPEED fl fr rl rr PWM ENC SCAN WIFI HELP | "
+      "bin: 0xA5 frames (PING/STOP/SPEED/PWM/TELEM)");
     return;
   }
   if (strcmp(line, "WIFI") == 0) {
@@ -98,15 +109,12 @@ void CommandDispatcher::handleLine(char *line) {
   reply_.err("unknown");
 }
 
-void CommandDispatcher::handleInit(char *line) {
-  long type = RoverSettings::kDefaultMotorTypeJgb;
-  long pol = RoverSettings::kDefaultEncoderPolarity;
-  sscanf(line + 4, "%ld %ld", &type, &pol);
-  if (!motors_.initMotors(static_cast<uint8_t>(type), static_cast<uint8_t>(pol))) {
+void CommandDispatcher::handleInit(char * /*line*/) {
+  if (!motors_.initMotors(0, 0)) {
     reply_.err("INIT");
     return;
   }
-  reply_.ok("INIT");
+  reply_.ok("INIT front");
 }
 
 void CommandDispatcher::handleDrive(char *line, bool pwm) {
@@ -126,10 +134,10 @@ void CommandDispatcher::handleDrive(char *line, bool pwm) {
   const int8_t m4 = clampI8(d, -lim, lim);
   const bool ok = pwm ? motors_.setPwm(m1, m2, m3, m4) : motors_.setSpeed(m1, m2, m3, m4);
   if (!ok) {
-    reply_.err(pwm ? "PWM i2c" : "SPEED i2c");
+    reply_.err(pwm ? "PWM drive" : "SPEED drive");
     return;
   }
-  if ((m1 | m2 | m3 | m4) != 0) {
+  if ((m1 | m2) != 0) {
     failsafe_.noteDriveActivity();
   } else {
     failsafe_.clear();
@@ -148,13 +156,19 @@ void CommandDispatcher::handleDrive(char *line, bool pwm) {
 }
 
 void CommandDispatcher::handleBattery() {
-  uint16_t mv = 0;
-  if (!motors_.readBatteryMv(&mv)) {
-    reply_.err("BAT");
+  BinaryProtocol::TelemPayload telem;
+  sensors_.readInto(&telem);
+  if ((telem.flags & BinaryProtocol::kFlagIna) == 0) {
+    reply_.err("BAT no INA219");
     return;
   }
-  char msg[32];
-  snprintf(msg, sizeof(msg), "BAT %u", static_cast<unsigned>(mv));
+  char msg[48];
+  snprintf(
+    msg,
+    sizeof(msg),
+    "BAT %u mV %d mA",
+    static_cast<unsigned>(telem.busMv),
+    static_cast<int>(telem.currentMa));
   reply_.ok(msg);
 }
 
@@ -194,9 +208,10 @@ void CommandDispatcher::handleWifi() {
 
 void CommandDispatcher::handleScan() {
   const int n = motors_.scan(true);
-  char msg[32];
-  snprintf(msg, sizeof(msg), "SCAN %d", n);
-  if (n > 0) {
+  const int motor = motors_.motorPresent() ? 1 : 0;
+  char msg[56];
+  snprintf(msg, sizeof(msg), "SCAN %d motor=%d front=2", n, motor);
+  if (motor > 0) {
     reply_.ok(msg);
   } else {
     reply_.err(msg);

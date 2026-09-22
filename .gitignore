@@ -21,3 +21,4 @@ __pycache__/
 
 # Generated WiFi secrets for ESP OTA (from SOARM_WIFI_* env)
 esp32/rover_coordinator/include/wifi_secrets.h
+maixcam/roverMecanum/dist/

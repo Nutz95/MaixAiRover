@@ -9,12 +9,24 @@
   "bluetooth_scan_timeout_sec": 30,
   "controller_mac": "78:86:2E:AC:8D:03",
   "camera": {
-    "enabled": true,
-    "width": 1280,
-    "height": 720,
+    "enabled": false,
+    "width": 640,
+    "height": 480,
     "fps": 30,
-    "format": "yuv420",
-    "display_fps": 15
+    "format": "rgb888",
+    "display_fps": 30
+  },
+  "esp": {
+    "front": {
+      "uart_port": "uart4",
+      "wifi_host": "192.168.20.148",
+      "wifi_port": 2333
+    },
+    "rear": {
+      "uart_port": "uart2",
+      "wifi_host": "",
+      "wifi_port": 2333
+    }
   },
   "i2c": {
     "mode": "stub",
@@ -39,11 +51,11 @@
   },
   "rover": {
     "max_speed": 255,
-    "send_interval_ms": 30,
+    "send_interval_ms": 15,
     "deadzone_percent": 5,
     "axis_sensitivity_percent": 70,
     "axis_expo": 2.2,
-    "axis_curve": "expo",
+    "axis_curve": "log",
     "speed_step": 5
   },
   "mapping": {

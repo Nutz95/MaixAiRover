@@ -1,3 +1,5 @@
+"""Camera capture thread paced for MaixCAM multi-core + GIL friendliness."""
+
 import gc
 import threading
 
@@ -13,21 +15,31 @@ _FORMATS = {
 
 
 def _resolve_format(name):
-  key = (name or "yuv420").strip().lower()
+  """
+  Resolve camera pixel format.
+
+  HUD uses ``draw_*`` which MaixCAM2 only supports on RGB/BGR. YUV capture
+  cannot be converted with ``to_format`` either (Not implemented), so map
+  any YUV request to RGB888 and log once.
+  """
+  key = (name or "rgb888").strip().lower()
+  if key in ("yuv420", "nv21", "yuv420sp", "yvu420sp"):
+    print(f"camera: {key} cannot HUD-draw on MaixCAM2 → rgb888")
+    key = "rgb888"
   if key in _FORMATS:
     return _FORMATS[key]
-  return image.Format.FMT_YVU420SP
+  return image.Format.FMT_RGB888
 
 
 class CameraPreviewService:
-  """Camera capture thread — paced to avoid starving MaixPy GIL / input poll."""
+  """Camera capture on a worker thread; display thread only samples latest frame."""
 
-  def __init__(self, disp, capture_w=1280, capture_h=720, fps=30, pixel_format="yuv420"):
+  def __init__(self, disp, capture_w=0, capture_h=0, fps=20, pixel_format="rgb888"):
     self._disp = disp
-    self._capture_w = int(capture_w)
-    self._capture_h = int(capture_h)
-    self._fps = max(1, min(60, int(fps)))
-    self._pace_ms = max(1, int(1000 / self._fps))
+    # 0 = match display (avoids a second resize channel + keeps FPS up).
+    self._capture_w = int(capture_w) if int(capture_w) > 0 else int(disp.width())
+    self._capture_h = int(capture_h) if int(capture_h) > 0 else int(disp.height())
+    self._fps = max(1, min(30, int(fps)))
     self._pixel_format = pixel_format
     self._lock = threading.Lock()
     self._latest = None
@@ -36,6 +48,7 @@ class CameraPreviewService:
     self._direct_read = False
     self._thread = None
     self._stop = threading.Event()
+    self._paused = threading.Event()
     self._ready = threading.Event()
     self._error = ""
 
@@ -54,8 +67,9 @@ class CameraPreviewService:
     if self._thread and self._thread.is_alive():
       return
     self._stop.clear()
+    self._paused.clear()
     self._ready.clear()
-    self._thread = threading.Thread(target=self._worker, daemon=True)
+    self._thread = threading.Thread(target=self._worker, daemon=True, name="cam-preview")
     self._thread.start()
     deadline = time.ticks_ms() + 8000
     while not self._ready.is_set() and time.ticks_ms() < deadline:
@@ -68,10 +82,18 @@ class CameraPreviewService:
     if self._stop.is_set() and self._cam is None:
       return
     self._stop.set()
+    self._paused.clear()
     if self._thread and self._thread.is_alive():
       self._thread.join(timeout=2.5)
     self._release_hw()
     self._thread = None
+
+  def set_paused(self, paused: bool) -> None:
+    """Pause capture (frees CPU while checklist / UART probe runs)."""
+    if paused:
+      self._paused.set()
+    else:
+      self._paused.clear()
 
   def get_frame(self):
     """Return the latest preview frame, or None if none is ready."""
@@ -80,19 +102,12 @@ class CameraPreviewService:
 
   def _open_camera(self):
     fmt = _resolve_format(self._pixel_format)
-    label = self._pixel_format
-    try:
-      cam = camera.Camera(self._capture_w, self._capture_h, fmt, fps=self._fps)
-      print(f"camera: {self._capture_w}x{self._capture_h} {label} @{self._fps}fps")
-      return cam
-    except Exception as exc:
-      if fmt == image.Format.FMT_YVU420SP:
-        raise
-      print(f"camera: {label} failed ({exc}), fallback yuv420")
-      cam = camera.Camera(
-        self._capture_w, self._capture_h, image.Format.FMT_YVU420SP, fps=self._fps,
-      )
-      return cam
+    label = "rgb888" if fmt == image.Format.FMT_RGB888 else (
+      "bgr888" if fmt == image.Format.FMT_BGR888 else self._pixel_format
+    )
+    cam = camera.Camera(self._capture_w, self._capture_h, fmt, fps=self._fps)
+    print(f"camera: {self._capture_w}x{self._capture_h} {label} @{self._fps}fps")
+    return cam
 
   def _worker(self):
     try:
@@ -104,10 +119,13 @@ class CameraPreviewService:
         self._preview = self._cam.add_channel(self._disp.width(), self._disp.height())
         print(f"camera: preview channel {self._disp.width()}x{self._disp.height()}")
       else:
-        print("camera: direct read (no resize channel)")
+        print("camera: direct read (display-sized, no resize)")
 
       self._ready.set()
       while not self._stop.is_set() and not app.need_exit():
+        if self._paused.is_set():
+          time.sleep_ms(40)
+          continue
         frame = None
         try:
           if self._direct_read:
@@ -119,7 +137,10 @@ class CameraPreviewService:
         if frame is not None:
           with self._lock:
             self._latest = frame
-        time.sleep_ms(self._pace_ms)
+          # Yield GIL; camera.read() already paces when a new frame is ready.
+          time.sleep_ms(1)
+        else:
+          time.sleep_ms(5)
     except Exception as exc:
       self._error = str(exc)
       print(f"camera error: {exc}")

@@ -4,22 +4,21 @@ import time
 from typing import Optional
 
 from lib.drive_action import DriveAction
-from lib.drive_command import DriveCommand
 from lib.drive_action_catalog import DriveActionCatalog
+from lib.drive_command import DriveCommand
 from lib.encoder_counts import EncoderCounts
 from lib.encoder_odometry import EncoderOdometry
-from lib.hiwonder_motor_driver import HiwonderMotorDriver
 from lib.mecanum_mixer import MecanumMixer
 from lib.motor_config import MotorConfig
 from lib.wheel_speeds import WheelSpeeds
 
 
 class MotionController:
-  """Orchestrate mixer + motor driver for teleop and relative yaw turns."""
+  """Orchestrate mixer + wheel drive port for teleop and relative yaw turns."""
 
   def __init__(
     self,
-    driver: HiwonderMotorDriver,
+    driver,
     mixer: MecanumMixer,
     odometry: EncoderOdometry,
     motor_config: MotorConfig,
@@ -105,11 +104,7 @@ class MotionController:
     timeout_s: float = 8.0,
     poll_s: float = 0.02,
   ) -> bool:
-    """Spin in place until estimated yaw reaches ``angle_deg`` or timeout.
-
-    Positive angles turn left (CCW). Uses encoder integration on the stub or
-    hardware driver. Returns True on success, False on timeout.
-    """
+    """Spin in place until estimated yaw reaches ``angle_deg`` or timeout."""
     if abs(angle_deg) < 0.5:
       self.stop()
       return True
@@ -118,7 +113,6 @@ class MotionController:
     target_pulses = self._odometry.pulses_for_yaw_degrees(angle_deg)
     self._driver.clear_encoders()
     sign = 1 if angle_deg > 0 else -1
-    # Spin left: FL+/RL+ and FR-/RR- matching mixer spin term.
     self._driver.set_wheel_speeds(
       WheelSpeeds(
         front_left=sign * setpoint,
@@ -141,7 +135,6 @@ class MotionController:
   def _progress_pulses(self, counts: EncoderCounts, sign: int) -> int:
     left = (counts.m1 + counts.m3) / 2.0
     right = (counts.m2 + counts.m4) / 2.0
-    # For +spin, left increases and right decreases.
     delta = (left - right) / 2.0
     if sign < 0:
       delta = -delta

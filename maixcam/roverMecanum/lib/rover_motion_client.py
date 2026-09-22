@@ -10,11 +10,16 @@ from lib.wheel_speeds import WheelSpeeds
 class RoverMotionClient:
   """Thin adapter exposing joystick/preset/stop APIs for the app loop."""
 
-  def __init__(self, motion: MotionController) -> None:
+  def __init__(self, motion: MotionController, is_stub: bool = True) -> None:
     self._motion = motion
+    self._is_stub = bool(is_stub)
     self._max_speed = 255
     self._i2c_error = ""
     self._battery = None
+
+  def is_stub(self) -> bool:
+    """True when motion uses the in-process stub (not live ESP UART)."""
+    return self._is_stub
 
   def note_i2c_error(self, message: str) -> None:
     """Record the last I2C failure for HUD / logs."""

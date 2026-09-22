@@ -6,18 +6,20 @@ Guidance for humans and coding agents working in this repository.
 
 ```
 MaixCAM2 (Xbox BLE, vision, strategy)
-    │ UART 115200 (text protocol → ESP)
-    ▼
-Waveshare ESP32 General Driver (rover_coordinator)
-    │ I2C @ 0x34
-    ▼
-Hiwonder 4-channel encoder motor board
+ │ UART4 → Waveshare front (FL/FR)
+ │ UART2 → Waveshare rear  (RL/RR)
+ ▼
+Waveshare ESP32 General Driver ×2 (rover_coordinator)
+ │ TB6612 + encoders
+ ▼
+Mecanum wheels
 ```
 
-- **MaixCAM2:** controller + detection + heavy compute; does **not** own motor I2C long-term.
-- **ESP32:** hardware coordinator (motors now; STS3215 servos + WS2812 later); USB + **OTA** flash.
-- **Hiwonder:** motors only.
-- WiFi for OTA: system env `SOARM_WIFI_SSID` / `SOARM_WIFI_PASS` (bake at compile via PlatformIO).
+- **MaixCAM2:** controller + detection + heavy compute; mecanum mix; dual UART pumps.
+- **ESP32 front/rear:** same firmware; local motor pair + PID; USB + OTA (`maixairover-front` / `maixairover-rear`).
+- **Hiwonder:** retired.
+- WiFi for OTA: system env `SOARM_WIFI_SSID` / `SOARM_WIFI_PASS`.
+- Device IPs: `esp32/rover_coordinator/devices.json`.
 
 Shipable MaixApp: `maixcam/roverMecanum/`. ESP firmware: `esp32/rover_coordinator/`.
 

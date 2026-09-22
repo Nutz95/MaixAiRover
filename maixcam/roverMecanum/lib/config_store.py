@@ -146,7 +146,7 @@ class ConfigStore:
         f" {target_revision} (forward=left_y strafe=triggers spin=right_x pivot=left_x)"
       )
 
-    for section in ("rover", "mapping", "evdev", "camera", "i2c", "motors"):
+    for section in ("rover", "mapping", "evdev", "camera", "i2c", "motors", "esp"):
       if section not in base:
         continue
       if section not in self._data:

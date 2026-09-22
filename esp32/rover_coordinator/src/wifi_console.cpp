@@ -75,7 +75,9 @@ void poll() {
     WiFiClient incoming = server->available();
     if (incoming) {
       client = incoming;
-      client.println("MaixAiRover ESP console - cmds: PING INIT STOP SPEED PWM BAT ENC WIFI SCAN");
+      client.println(
+        "MaixAiRover ESP console - text: PING INIT STOP SPEED PWM BAT ENC WIFI SCAN HELP | "
+        "bin: SYNC=0xA5");
       Serial.println("wifi-console: client connected");
     }
   }

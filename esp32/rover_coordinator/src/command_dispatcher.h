@@ -1,12 +1,13 @@
 /**
- * Parse UART/TCP line protocol and dispatch to motor / wifi services.
+ * Parse UART/TCP line protocol and dispatch to motor / wifi / sensors.
  */
 #pragma once
 
 #include <stdint.h>
 
+class BoardSensors;
 class DriveFailsafe;
-class HiwonderMotorBoard;
+class FrontDriveBoard;
 class ProtocolReply;
 class WifiRuntime;
 class CoordinatorLock;
@@ -14,11 +15,12 @@ class CoordinatorLock;
 class CommandDispatcher {
  public:
   CommandDispatcher(
-    HiwonderMotorBoard &motors,
+    FrontDriveBoard &motors,
     DriveFailsafe &failsafe,
     ProtocolReply &reply,
     WifiRuntime &wifi,
-    CoordinatorLock &lock);
+    CoordinatorLock &lock,
+    BoardSensors &sensors);
 
   /** Handle one NUL-terminated command line (mutates whitespace in place). */
   void handleLine(char *line);
@@ -39,10 +41,11 @@ class CommandDispatcher {
   void handleWifi();
   void handleScan();
 
-  HiwonderMotorBoard &motors_;
+  FrontDriveBoard &motors_;
   DriveFailsafe &failsafe_;
   ProtocolReply &reply_;
   WifiRuntime &wifi_;
   CoordinatorLock &lock_;
+  BoardSensors &sensors_;
   static CommandDispatcher *s_instance;
 };

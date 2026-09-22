@@ -1,79 +1,51 @@
 # ESP rover coordinator (Waveshare)
 
-Hardware brain of the rover: [Waveshare General Driver for Robots](https://www.waveshare.com/wiki/General_Driver_for_Robots)
-(ESP32) talks to the Hiwonder motor board over I2C and accepts drive commands
-from MaixCAM2 (or a PC) over UART.
+Hardware brain: [Waveshare General Driver for Robots](https://www.waveshare.com/wiki/General_Driver_for_Robots)
+drives a **local left/right** pair via onboard TB6612 + encoders (PID @ 100 Hz).
+Two boards (front + rear) run the **same** firmware; OTA hostname differs.
 
 ```
-MaixCAM2  --UART 115200-->  ESP32 coordinator  --I2C 0x34-->  Hiwonder motors
+MaixCAM2 --UART4--> front Waveshare IO4/IO5 --TB6612--> FL/FR
+MaixCAM2 --UART2--> rear  Waveshare IO4/IO5 --TB6612--> RL/RR
 ```
 
 ## Firmware layout (`src/`)
 
-| Module | Responsibility |
-|--------|----------------|
-| `main.cpp` | Wire objects; spawn FreeRTOS tasks (cmd + wifi) |
-| `settings.h` | Baud, I2C pins/addr, PWM limits, reverse coast, UART2 pins, task sizes |
-| `hiwonder_motor_board.*` | Hiwonder I2C + reverse coast dead-time |
-| `command_dispatcher.*` | Parse line protocol → motor / wifi |
-| `drive_failsafe.*` | Stop motors if no SPEED/PWM for 1.5 s |
-| `serial_line_reader.*` | LF framing for USB Serial **and** MaixCAM UART |
-| `cam_uart.*` | UART2 on GPIO15 RX / GPIO14 TX |
-| `wifi_runtime.*` | STA join, OTA, TCP console (wifi task) |
-| `protocol_reply.*` | Fan-out `OK`/`ERR` to Serial + WiFi |
-| `coordinator_lock.*` | Recursive mutex shared by cmd/wifi paths |
-| `wifi_console.*` | TCP server on port 2333 |
+
+| Module                                           | Responsibility                           |
+| ------------------------------------------------ | ---------------------------------------- |
+| `main.cpp`                                       | Wire objects; spawn cmd + wifi tasks     |
+| `settings.h`                                     | Pins, encoder model, PID, task sizes     |
+| `front_drive_board.*`                            | Local pair setpoints, PID loop, encoders |
+| `tb6612_channel.*`                               | One H-bridge PWM channel                 |
+| `quadrature_encoder.*`                           | Full-quadrature ISR counters             |
+| `wheel_velocity_pid.*`                           | RPM-space PID                            |
+| `command_dispatcher.*`                           | Line protocol → drive / wifi / BAT       |
+| `binary_protocol.h` / `binary_command_handler.*` | Compact `0xA5` frames + TELEM            |
+| `board_sensors.*`                                | INA219 + QMI8658 + AK09918               |
+| `drive_failsafe.*`                               | Stop if no SPEED/PWM for 1.5 s           |
+| `serial_line_reader.*`                           | LF text + binary framing on UART0        |
+| `wifi_runtime.*` / `wifi_console.*`              | STA, OTA, TCP :2333                      |
+| `protocol_reply.*`                               | `OK`/`ERR` → Serial + WiFi               |
+| `coordinator_lock.*` / `coordinator_guard.*`     | Mutex                                    |
+
+
+
 
 ## Wiring
 
-| Waveshare IIC | Hiwonder |
-|---------------|----------|
-| SDA (GPIO32) | SDA |
-| SCL (GPIO33) | SCL |
-| GND | GND |
-
-Power Hiwonder **VM** separately (5–15 V). MaixCAM UART TX/RX → ESP UART
-(pins TBD in `docs/wiring.md` — use USB serial for PC smoke tests).
+See [docs/wiring.md](../../docs/wiring.md). Board supply **7–13 V** required for motors.
 
 ## Flash
 
-WiFi for OTA uses system env vars (same workstation as SOARM / AutoBalancing):
-
-- `SOARM_WIFI_SSID`
-- `SOARM_WIFI_PASS`
+IPs: `[devices.json](devices.json)`. Envs: `waveshare_front` / `waveshare_rear` (+ `_ota`).
 
 ```powershell
-# First flash over USB (hold Download + Reset if needed)
-.\tools\flash_esp_coordinator.ps1 -Port COM9
-
-# Later: OTA (optional; only if WiFi joined - get IP from Serial or WIFI cmd)
-.\tools\flash_esp_coordinator.ps1 -Ota -OtaHost 192.168.20.148
+.\tools\flash_esp_coordinator.ps1 -Board rear -Port COM11 -Monitor
+.\tools\flash_esp_coordinator.ps1 -Board front -Ota
+.\tools\flash_esp_coordinator.ps1 -Board both -Ota
+python tools\drive_esp_coordinator.py --port COM11
+# SPEED 25 25 0 0
 ```
 
-## Serial protocol (115200)
-
-| Cmd | Reply |
-|-----|--------|
-| `PING` | `OK PONG` |
-| `INIT [type] [pol]` | motor type (default 3=JGB) |
-| `STOP` / `SPEED m1 m2 m3 m4` / `PWM …` | drive |
-| `BAT` / `ENC` | telemetry |
-| `WIFI` | `OK WIFI <ip>` or error |
-
-Failsafe: no `SPEED`/`PWM` for 1.5 s → stop.
-
-PC smoke: `python tools/drive_esp_coordinator.py --port COM9 --demo`
-
-WiFi console (after `wifi: OK ip=...`):
-
-```powershell
-python tools\wifi_console_client.py --host 192.168.20.148
-python tools\wifi_console_client.py --host 192.168.20.148 -c SCAN -c PING
-```
-
-Port **2333**. Same commands as USB Serial (`PING`, `SCAN`, `SPEED`, …).
-
-## Later (not in this firmware yet)
-
-- STS3215 bus servos (gimbal + ToF mount)
-- WS2812 corner blinkers + front KITT strip
+WiFi OTA: `SOARM_WIFI_SSID` / `SOARM_WIFI_PASS`.

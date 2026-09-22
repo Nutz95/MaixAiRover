@@ -6,15 +6,22 @@ from maix import app, display, image, time, touchscreen
 
 from lib.bluetooth_installer import BluetoothInstaller
 from lib.camera_preview_service import CameraPreviewService
+from lib.checklist_panel import ChecklistPanel
 from lib.config_store import ConfigStore
+from lib.debug_panel import DebugPanel
+from lib.esp_debug_session import EspDebugSession
+from lib.esp_link_config import EspLinkConfig
+from lib.hud_instruments import from_telem
 from lib.motion_stack_factory import MotionStackFactory
+from lib.peripheral_health_checker import PeripheralHealthChecker
+from lib.teleop_control_thread import TeleopControlThread
 from lib.touch_point import TouchPoint
 from lib.ui_drawer import UiDrawer
 from lib.xbox_input_service import XboxInputService
 
 
 class XboxRoverApp:
-  """Xbox teleop app driving the Hiwonder stack (stub or hardware I2C)."""
+  """Xbox teleop app with HUD, checklist, and ESP debug panel."""
 
   TOUCH_DEBOUNCE_MS = 900
   SPEED_DEBOUNCE_MS = 160
@@ -25,19 +32,34 @@ class XboxRoverApp:
     self._config_store.log_rover_settings()
     rover_cfg = self._config.get("rover", {})
     cam_cfg = self._config.get("camera", {})
-    display_fps = max(1, min(30, int(cam_cfg.get("display_fps", 15))))
+    esp_links = EspLinkConfig.from_mapping(self._config.get("esp", {}))
+    display_fps = max(5, min(30, int(cam_cfg.get("display_fps", 20))))
     self._display_interval_ms = max(1, int(1000 / display_fps))
-    self._rover = MotionStackFactory().create(self._config)
-    print(BluetoothInstaller().install())
-    self._xbox = XboxInputService(self._config_store)
     self._disp = display.Display()
     self._ui = UiDrawer(self._disp.width(), self._disp.height())
+    self._checklist_panel = ChecklistPanel(self._disp.width(), self._disp.height())
+    self._debug_panel = DebugPanel(self._disp.width(), self._disp.height())
+    self._esp_links = esp_links
+    self._debug = EspDebugSession(uart_port=esp_links.front.uart_port)
+    self._rear_debug = None
+    set_rear = None
+    if esp_links.rear is not None:
+      self._rear_debug = EspDebugSession(uart_port=esp_links.rear.uart_port)
+      set_rear = self._rear_debug.set_drive
+    self._rover = MotionStackFactory().create_esp(
+      self._config,
+      set_front_drive=self._debug.set_drive,
+      set_rear_drive=set_rear,
+    )
+    print(BluetoothInstaller().install())
+    self._xbox = XboxInputService(self._config_store)
     self._ts = touchscreen.TouchScreen()
     self._send_interval = rover_cfg.get("send_interval_ms", 30)
     self._exit = threading.Event()
     self._touch_action = None
     self._touch_lock = threading.Lock()
     self._touch_ignore_until = 0
+    self._touch_was_pressed = False
     self._was_connected = False
     self._was_busy = False
     self._camera = None
@@ -47,36 +69,39 @@ class XboxRoverApp:
     self._speed_step = int(rover_cfg.get("speed_step", 5))
     self._last_speed_change_ms = 0
     self._rover.set_max_speed(self._session_max_speed)
+    self._checklist = None
+    self._checklist_open = False
+    self._checklist_lock = threading.Lock()
+    self._health = PeripheralHealthChecker(
+      esp_wifi_host=esp_links.front.wifi_host,
+      esp_wifi_port=esp_links.front.wifi_port,
+      esp_uart_port=esp_links.front.uart_port,
+      rear_uart_port=(esp_links.rear.uart_port if esp_links.rear else ""),
+    )
+    self._cam_cfg = cam_cfg
+    self._display_fps = display_fps
+    self._control = TeleopControlThread(
+      xbox=self._xbox,
+      rover=self._rover,
+      send_drive=self._send_drive,
+      send_interval_ms=int(rover_cfg.get("send_interval_ms", 10)),
+      on_tick=self._control_tick,
+    )
 
   def run(self) -> None:
-    """Start camera/display threads and run the input + motion control loop."""
+    """Start HUD + control threads; main thread only handles touch/UI."""
     self._start_camera()
-
-    display_thread = threading.Thread(target=self._display_loop, daemon=True)
+    display_thread = threading.Thread(
+      target=self._display_loop, daemon=True, name="hud-display",
+    )
     display_thread.start()
-
-    send_ms = 0
-    was_connected = False
-
+    self._control.start()
     try:
       while not app.need_exit() and not self._exit.is_set():
-        self._apply_rover_config()
-        self._xbox.poll()
-        self._handle_speed_bumpers()
         self._read_touch()
         self._handle_touch()
         self._on_connection_change()
-
-        snap = self._xbox.snapshot()
-        now = time.ticks_ms()
-        if snap.connected and snap.drive is not None and now - send_ms >= self._send_interval:
-          self._send_drive(snap.drive)
-          send_ms = now
-        elif was_connected and not snap.connected:
-          self._rover.send_stop()
-
-        was_connected = snap.connected
-        time.sleep_ms(1)
+        time.sleep_ms(8)
     finally:
       self.shutdown()
       display_thread.join(timeout=1.0)
@@ -87,6 +112,10 @@ class XboxRoverApp:
       return
     self._shutdown_done = True
     self._exit.set()
+    self._control.stop()
+    self._debug.shutdown()
+    if self._rear_debug is not None:
+      self._rear_debug.shutdown()
     self._xbox.close()
     try:
       self._rover.send_stop()
@@ -95,6 +124,12 @@ class XboxRoverApp:
     if self._camera is not None:
       self._camera.stop()
       self._camera = None
+
+  def _control_tick(self) -> None:
+    """Light work on the control thread (config reload + LB/RB speed)."""
+    self._apply_rover_config()
+    self._handle_speed_bumpers()
+    self._control.set_send_interval_ms(self._send_interval)
 
   def _apply_rover_config(self) -> None:
     """Hot-reload rover tuning; reset session speed if file max_speed changes."""
@@ -138,18 +173,21 @@ class XboxRoverApp:
     last_draw = 0
     while not app.need_exit() and not self._exit.is_set():
       now = time.ticks_ms()
-      if now - last_draw >= self._display_interval_ms:
-        self._draw_frame()
-        last_draw = now
-      time.sleep_ms(4)
+      wait = self._display_interval_ms - (now - last_draw)
+      if wait > 1:
+        time.sleep_ms(wait)
+        continue
+      self._draw_frame()
+      last_draw = time.ticks_ms()
 
   def _start_camera(self) -> None:
-    cam_cfg = self._config.get("camera", {})
+    cam_cfg = self._cam_cfg
     if not cam_cfg.get("enabled", True):
+      print("camera: disabled (teleop black HUD — enable for YOLO mode)")
       return
-    width = int(cam_cfg.get("width", 1280))
-    height = int(cam_cfg.get("height", 720))
-    fps = int(cam_cfg.get("fps", 60))
+    width = int(cam_cfg.get("width", 0))
+    height = int(cam_cfg.get("height", 0))
+    fps = int(cam_cfg.get("fps", 0)) or self._display_fps
     pixel_format = cam_cfg.get("format", "rgb888")
     self._camera = CameraPreviewService(
       self._disp, width, height, fps=fps, pixel_format=pixel_format,
@@ -160,16 +198,39 @@ class XboxRoverApp:
       self._camera.stop()
       self._camera = None
     else:
-      print(f"display: {int(1000 / self._display_interval_ms)} fps target")
+      print(f"display: {self._display_fps} fps target")
 
   def _draw_frame(self) -> None:
+    with self._checklist_lock:
+      checklist_open = self._checklist_open
+      checklist = self._checklist
+    debug_open, debug_link, debug_status, debug_telem = self._debug.snapshot()
+
+    if checklist_open:
+      frame = image.Image(self._disp.width(), self._disp.height(), bg=image.COLOR_BLACK)
+      self._checklist_panel.draw(frame, checklist)
+      self._disp.show(frame)
+      return
+
+    if debug_open:
+      frame = image.Image(self._disp.width(), self._disp.height(), bg=image.COLOR_BLACK)
+      self._debug_panel.draw(
+        frame, link_name=debug_link, status=debug_status, telem=debug_telem,
+      )
+      self._disp.show(frame)
+      return
+
     frame = None
     if self._camera is not None:
       frame = self._camera.get_frame()
     if frame is None:
       frame = image.Image(self._disp.width(), self._disp.height(), bg=image.COLOR_BLACK)
-
+    else:
+      # MaixPy draw_* rejects YUV (config default yuv420); HUD needs RGB.
+      frame = self._drawable_rgb(frame)
     snap = self._xbox.snapshot()
+    wheels = self._rover.last_wheel_speeds()
+    motor_lim = int(self._config.get("motors", {}).get("max_setpoint", 50))
     self._ui.draw_overlay(
       frame,
       snap.connected,
@@ -179,29 +240,121 @@ class XboxRoverApp:
       self._session_max_speed,
       status=snap.status,
       progress=snap.progress,
+      instruments=from_telem(self._debug.telem()),
+      wheel_fl=wheels.front_left,
+      wheel_fr=wheels.front_right,
+      motor_limit=motor_lim,
     )
     self._disp.show(frame)
 
+  @staticmethod
+  def _drawable_rgb(frame):
+    """Return an RGB888 image MaixPy can draw on."""
+    try:
+      fmt = frame.format()
+    except Exception:
+      return frame
+    if fmt in (image.Format.FMT_RGB888, image.Format.FMT_BGR888):
+      return frame
+    # MaixCAM2: YUV→RGB via to_format is often unimplemented — blank RGB HUD.
+    try:
+      return frame.to_format(image.Format.FMT_RGB888)
+    except Exception as exc:
+      print(f"hud: cannot convert frame ({exc}); RGB blank")
+      return image.Image(frame.width(), frame.height(), bg=image.COLOR_BLACK)
+
   def _read_touch(self) -> None:
+    """Latch one press edge — holding a finger must not re-fire after a modal closes."""
     x, y, pressed = self._ts.read()
-    if pressed:
+    if pressed and not self._touch_was_pressed:
       with self._touch_lock:
         self._touch_action = TouchPoint(x=x, y=y)
+    self._touch_was_pressed = bool(pressed)
+
+  def _arm_touch_ignore(self) -> None:
+    """Ignore touch until release + debounce (after closing overlays)."""
+    self._touch_ignore_until = time.ticks_ms() + self.TOUCH_DEBOUNCE_MS
+    self._touch_was_pressed = True
+    with self._touch_lock:
+      self._touch_action = None
 
   def _on_connection_change(self) -> None:
     snap = self._xbox.snapshot()
-    now = time.ticks_ms()
+    if snap.connected and not self._was_connected:
+      self._open_checklist()
+      threading.Thread(
+        target=self._run_peripheral_checklist, daemon=True, name="periph-check",
+      ).start()
+    if not snap.connected and self._was_connected:
+      self._close_checklist()
+      self._close_debug()
+      self._debug.stop_link()
+      if self._rear_debug is not None:
+        self._rear_debug.stop_link()
     if snap.connected != self._was_connected or snap.busy != self._was_busy:
-      self._touch_ignore_until = now + self.TOUCH_DEBOUNCE_MS
-      with self._touch_lock:
-        self._touch_action = None
+      self._arm_touch_ignore()
     self._was_connected = snap.connected
     self._was_busy = snap.busy
+
+  def _open_checklist(self) -> None:
+    with self._checklist_lock:
+      self._checklist = None
+      self._checklist_open = True
+    if self._camera is not None:
+      self._camera.set_paused(True)
+
+  def _close_checklist(self) -> None:
+    with self._checklist_lock:
+      self._checklist_open = False
+      self._checklist = None
+    self._arm_touch_ignore()
+    if self._xbox.snapshot().connected:
+      self._debug.start_link()
+      if self._rear_debug is not None:
+        self._rear_debug.start_link()
+    if self._camera is not None and not self._debug.is_open():
+      self._camera.set_paused(False)
+
+  def _open_debug(self) -> None:
+    if self._camera is not None:
+      self._camera.set_paused(True)
+    self._debug.open()
+    self._arm_touch_ignore()
+
+  def _close_debug(self) -> None:
+    was_open = self._debug.is_open()
+    self._debug.close()
+    if was_open:
+      self._arm_touch_ignore()
+    if was_open and self._camera is not None and not self._checklist_open:
+      self._camera.set_paused(False)
+
+  def _run_peripheral_checklist(self) -> None:
+    """Probe ESP / motors after pad connect; fill the opaque checklist panel."""
+    report = self._health.run(
+      xbox_connected=True,
+      camera_ok=self._camera is not None,
+      motion_is_stub=self._rover.is_stub(),
+    )
+    print("peripheral checklist:")
+    for line in report.log_lines():
+      print(f"  {line}")
+    with self._checklist_lock:
+      if self._checklist_open:
+        self._checklist = report
+
+  def _request_exit(self) -> None:
+    self._xbox.request_stop()
+    try:
+      self._rover.send_stop()
+    except OSError:
+      pass
+    self._exit.set()
+    app.set_exit_flag(True)
 
   def _handle_touch(self) -> None:
     if time.ticks_ms() < self._touch_ignore_until:
       return
-
     action = None
     with self._touch_lock:
       if self._touch_action is not None:
@@ -210,24 +363,44 @@ class XboxRoverApp:
     if action is None:
       return
 
-    snap = self._xbox.snapshot()
-    if self._ui.back_rect().contains(action.x, action.y):
-      self._xbox.request_stop()
-      try:
-        self._rover.send_stop()
-      except OSError:
-        pass
-      self._exit.set()
-      app.set_exit_flag(True)
+    with self._checklist_lock:
+      checklist_open = self._checklist_open
+      checklist_ready = self._checklist is not None
+    debug_open = self._debug.is_open()
+
+    if checklist_open:
+      if checklist_ready and self._checklist_panel.ok_rect().contains(action.x, action.y):
+        self._close_checklist()
+      elif self._ui.back_rect().contains(action.x, action.y):
+        self._request_exit()
       return
 
+    if debug_open:
+      if self._debug_panel.close_rect().contains(action.x, action.y):
+        self._close_debug()
+      elif self._debug_panel.ping_rect().contains(action.x, action.y):
+        self._debug.run_action("ping")
+      elif self._debug_panel.stop_rect().contains(action.x, action.y):
+        self._debug.run_action("stop")
+      elif self._debug_panel.fwd_rect().contains(action.x, action.y):
+        self._debug.run_action("fwd")
+      elif self._debug_panel.init_rect().contains(action.x, action.y):
+        self._debug.run_action("init")
+      return
+
+    snap = self._xbox.snapshot()
+    if self._ui.back_rect().contains(action.x, action.y):
+      self._request_exit()
+      return
     if not snap.busy and not snap.connected:
       if self._ui.pair_rect().contains(action.x, action.y):
         self._xbox.start_pairing()
       elif self._ui.connect_rect().contains(action.x, action.y):
         self._xbox.start_connect()
       return
-
+    if snap.connected and self._ui.debug_rect().contains(action.x, action.y):
+      self._open_debug()
+      return
     if snap.connected and self._ui.disconnect_rect().contains(action.x, action.y):
       self._xbox.request_stop()
       try:
@@ -236,6 +409,11 @@ class XboxRoverApp:
         pass
 
   def _send_drive(self, drive) -> None:
+    with self._checklist_lock:
+      if self._checklist_open:
+        return
+    if self._debug.is_open():
+      return
     try:
       if drive.preset_action is not None:
         self._rover.send_preset(drive.preset_action)

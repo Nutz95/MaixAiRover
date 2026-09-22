@@ -5,7 +5,8 @@
 
 #include <stdint.h>
 
-class HiwonderMotorBoard;
+class CoordinatorLock;
+class FrontDriveBoard;
 class ProtocolReply;
 
 class DriveFailsafe {
@@ -17,7 +18,7 @@ class DriveFailsafe {
   void clear();
 
   /** If armed and timed out, stop motors and emit OK TIMEOUT STOP. */
-  void poll(HiwonderMotorBoard &motors, ProtocolReply &reply);
+  void poll(FrontDriveBoard &motors, ProtocolReply &reply, CoordinatorLock &lock);
 
  private:
   uint32_t lastDriveMs_ = 0;

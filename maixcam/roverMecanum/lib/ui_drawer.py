@@ -1,8 +1,11 @@
 """Full-screen HUD overlay for camera + controller state."""
 
+import math
+
 from maix import image
 
 from lib.controller_button import ControllerButton
+from lib.hud_instruments import HudInstruments
 from lib.ui_rect import UiRect
 
 
@@ -21,15 +24,16 @@ class UiDrawer:
     pad = 8
     back_size = 44
     self._back_pad = UiRect(pad, pad, back_size, back_size)
-    disc_w, disc_h = 64, 40
-    self._disconnect_rect = UiRect(self.width - disc_w - pad, pad, disc_w, disc_h)
-    # Finger-friendly PAIR / CONNECT (bottom bar).
     btn_h = 72
     gap = 12
     y = self.height - btn_h - 10
     half_w = (self.width - gap * 3) // 2
-    self._pair_rect = UiRect(gap, y, half_w, btn_h)
-    self._connect_rect = UiRect(gap * 2 + half_w, y, half_w, btn_h)
+    left = UiRect(gap, y, half_w, btn_h)
+    right = UiRect(gap * 2 + half_w, y, half_w, btn_h)
+    self._pair_rect = left
+    self._disconnect_rect = left
+    self._connect_rect = right
+    self._debug_rect = right
     self._bottom_bar_top = y - 10
 
   def back_rect(self) -> UiRect:
@@ -48,6 +52,10 @@ class UiDrawer:
     """Return the DISC button hit rectangle."""
     return self._disconnect_rect
 
+  def debug_rect(self) -> UiRect:
+    """Return the DBG button hit rectangle."""
+    return self._debug_rect
+
   def draw_overlay(
     self,
     img,
@@ -58,8 +66,12 @@ class UiDrawer:
     max_speed: int = 255,
     status: str = "",
     progress: float = 0.0,
+    instruments: HudInstruments | None = None,
+    wheel_fl: int = 0,
+    wheel_fr: int = 0,
+    motor_limit: int = 50,
   ) -> None:
-    """Draw HUD: speed bar, sticks, triggers, d-pad, connection buttons."""
+    """Draw HUD: speed bar, instruments, sticks, connection buttons."""
     bx = self._back_pad
     img.draw_rect(bx.x, bx.y, bx.width, bx.height, image.Color.from_rgb(0, 0, 0), thickness=-1)
     icon_x = bx.x + (bx.width - self._img_back.width()) // 2
@@ -67,10 +79,13 @@ class UiDrawer:
     img.draw_image(icon_x, icon_y, self._img_back)
 
     if connected:
+      self._draw_bottom_bar(img)
       self._draw_button(img, self.disconnect_rect(), "DISC", image.Color.from_rgb(180, 60, 40))
+      self._draw_button(img, self.debug_rect(), "DBG", image.Color.from_rgb(50, 90, 140))
       lb = state.buttons.get(ControllerButton.LB, False)
       rb = state.buttons.get(ControllerButton.RB, False)
-      self._draw_speed_bar(img, max_speed, lb, rb)
+      self._draw_speed_bar(img, max_speed, lb, rb, wheel_fl, wheel_fr, motor_limit)
+      self._draw_instruments(img, instruments)
 
       gauge_cy = self.height // 2 + 8
       radius = min(68, (self.width - 120) // 4)
@@ -100,6 +115,73 @@ class UiDrawer:
       self._draw_button(img, self.pair_rect(), "PAIR", image.Color.from_rgb(40, 80, 160))
       self._draw_button(img, self.connect_rect(), "CONNECT", image.Color.from_rgb(40, 120, 60))
 
+  def _draw_instruments(self, img, instruments: HudInstruments | None) -> None:
+    """Heading under speed bar + battery % + mini pitch/roll (avion-style)."""
+    y = 52 + self.SPEED_BAR_H + 6
+    if instruments is None:
+      instruments = HudInstruments(None, None, None, None, None, None)
+    if instruments.cardinal is not None and instruments.heading_deg is not None:
+      label = f"{instruments.cardinal}  {instruments.heading_deg:05.1f}"
+    else:
+      label = "CAP —"
+    size = image.string_size(label, scale=1.15, thickness=1)
+    img.draw_string(
+      (self.width - size.width()) // 2, y, label, image.COLOR_WHITE, scale=1.15,
+    )
+    self._draw_battery_bar(img, instruments.battery_pct, instruments.bus_mv)
+    self._draw_attitude(img, instruments.pitch_deg, instruments.roll_deg)
+
+  def _draw_battery_bar(self, img, pct: int | None, bus_mv: int | None) -> None:
+    x = 54
+    y = 8
+    w = self.width - 108
+    h = 16
+    img.draw_rect(x, y, w, h, image.Color.from_rgb(20, 20, 20), thickness=-1)
+    img.draw_rect(x, y, w, h, image.COLOR_WHITE, thickness=1)
+    if pct is None:
+      txt = "BAT —"
+      color = image.Color.from_rgb(80, 80, 80)
+      fill = 0
+    else:
+      txt = f"BAT {pct}%"
+      if bus_mv is not None:
+        txt = f"BAT {pct}% {bus_mv / 1000.0:.1f}V"
+      if pct <= 20:
+        color = image.Color.from_rgb(200, 60, 40)
+      elif pct <= 40:
+        color = image.Color.from_rgb(200, 160, 40)
+      else:
+        color = image.Color.from_rgb(40, 180, 90)
+      fill = max(0, int(w * pct / 100))
+    if fill > 2:
+      img.draw_rect(x + 1, y + 1, fill - 2, h - 2, color, thickness=-1)
+    size = image.string_size(txt, scale=0.9, thickness=1)
+    img.draw_string(x + (w - size.width()) // 2, y + 2, txt, image.COLOR_WHITE, scale=0.9)
+
+  def _draw_attitude(self, img, pitch: float | None, roll: float | None) -> None:
+    """Small artificial-horizon style pitch/roll strip near top-right."""
+    cx = self.width - 52
+    cy = 118
+    r = 28
+    img.draw_circle(cx, cy, r, image.Color.from_rgb(30, 40, 55), thickness=-1)
+    img.draw_circle(cx, cy, r, image.COLOR_WHITE, thickness=1)
+    if pitch is None or roll is None:
+      img.draw_string(cx - 10, cy - 6, "—", image.COLOR_WHITE, scale=1.0)
+      return
+    pr = max(-30.0, min(30.0, pitch))
+    rr = max(-45.0, min(45.0, roll))
+    rad = math.radians(rr)
+    dy = int((-pr / 30.0) * (r - 6))
+    dx = int(math.cos(rad) * (r - 4))
+    dy_line = int(math.sin(rad) * (r - 4))
+    img.draw_line(
+      cx - dx, cy + dy - dy_line, cx + dx, cy + dy + dy_line,
+      image.Color.from_rgb(80, 200, 120), thickness=2,
+    )
+    img.draw_line(cx - 6, cy, cx + 6, cy, image.Color.from_rgb(255, 200, 40), thickness=1)
+    img.draw_string(cx - r, cy + r + 4, f"P{pitch:+.0f}", image.COLOR_WHITE, scale=0.75)
+    img.draw_string(cx + 2, cy + r + 4, f"R{roll:+.0f}", image.COLOR_WHITE, scale=0.75)
+
   def _draw_progress(self, img, status: str, progress: float) -> None:
     """Show pairing/connect status text and a simple progress bar."""
     pct = max(0.0, min(1.0, float(progress)))
@@ -125,12 +207,22 @@ class UiDrawer:
         image.Color.from_rgb(60, 160, 220), thickness=-1,
       )
 
-  def _draw_speed_bar(self, img, max_speed: int, lb_pressed: bool, rb_pressed: bool) -> None:
+  def _draw_speed_bar(
+    self,
+    img,
+    max_speed: int,
+    lb_pressed: bool,
+    rb_pressed: bool,
+    wheel_fl: int = 0,
+    wheel_fr: int = 0,
+    motor_limit: int = 50,
+  ) -> None:
     y = 52
     x = 54
     w = self.width - 108
     h = self.SPEED_BAR_H
     pct = max(0, min(100, int(round(max_speed * 100 / 255))))
+    lim = max(1, int(motor_limit))
 
     img.draw_rect(x, y, w, h, image.Color.from_rgb(20, 20, 20), thickness=-1)
     img.draw_rect(x, y, w, h, image.COLOR_WHITE, thickness=1)
@@ -138,9 +230,10 @@ class UiDrawer:
     if fill_w > 0:
       img.draw_rect(x + 1, y + 1, fill_w - 2, h - 2, image.Color.from_rgb(40, 180, 90), thickness=-1)
 
-    label = f"SPD {pct}%"
-    size = image.string_size(label, scale=1.0, thickness=1)
-    img.draw_string(x + (w - size.width()) // 2, y + 4, label, image.COLOR_WHITE, scale=1.0)
+    # CAP = session stick scale; M = ESP SPEED limit; FL/FR = last setpoints.
+    label = f"CAP {pct}%  M±{lim}  {wheel_fl}/{wheel_fr}"
+    size = image.string_size(label, scale=0.85, thickness=1)
+    img.draw_string(x + (w - size.width()) // 2, y + 4, label, image.COLOR_WHITE, scale=0.85)
 
     lb_c = image.Color.from_rgb(80, 200, 100) if lb_pressed else image.Color.from_rgb(35, 35, 35)
     rb_c = image.Color.from_rgb(80, 200, 100) if rb_pressed else image.Color.from_rgb(35, 35, 35)
@@ -182,9 +275,9 @@ class UiDrawer:
     img.draw_circle(x, y, radius, color, thickness=-1)
 
   def _draw_face_buttons(self, img, state) -> None:
-    """Highlight A/B/X/Y when pressed (bottom-right cluster)."""
+    """Highlight A/B/X/Y when pressed (above the bottom DISC/DBG bar)."""
     cx = self.width - 56
-    cy = self.height - 110
+    cy = self._bottom_bar_top - 48
     gap = 18
     r = 12
     dim = image.Color.from_rgb(35, 35, 35)

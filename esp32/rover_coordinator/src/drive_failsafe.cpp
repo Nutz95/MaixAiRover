@@ -2,8 +2,9 @@
 
 #include <Arduino.h>
 
+#include "coordinator_guard.h"
 #include "coordinator_lock.h"
-#include "hiwonder_motor_board.h"
+#include "front_drive_board.h"
 #include "protocol_reply.h"
 #include "settings.h"
 
@@ -17,7 +18,7 @@ void DriveFailsafe::clear() {
 }
 
 void DriveFailsafe::poll(
-  HiwonderMotorBoard &motors, ProtocolReply &reply, CoordinatorLock &lock) {
+  FrontDriveBoard &motors, ProtocolReply &reply, CoordinatorLock &lock) {
   if (!armed_) {
     return;
   }
