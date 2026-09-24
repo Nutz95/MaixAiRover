@@ -43,7 +43,7 @@ def encode_car_motion(car_type: int, vx: float, vy: float, vz: float) -> bytes:
 
 def encode_set_car_type(car_type: int) -> bytes:
   """Select kinematics profile (mecanum X3 = 0x01); ``0x5F`` = persist."""
-  return encode_frame(FUNC_SET_CAR_TYPE, bytes((int(car_type) & 0xFF, 0x5F)))
+  return encode_frame(FUNC_SET_CAR_TYPE, bytes((car_type & 0xFF, 0x5F)))
 
 
 def encode_auto_report(enable: bool, forever: bool = False) -> bytes:

@@ -21,7 +21,11 @@ Strafe comes from `trigger_diff` = RT − LT (both pressed → cancel). Config: 
 
 ## Ball-follow
 
-When enabled (View), sticks are overridden: vision drives `forward` + `spin` only via the active backend (`set_car_motion` on Yahboom). Lost ball: wait → encoder ~360° spin → IMU compass fix to search-start heading → pause → retreat → repeat. Optional `ball_follow.depth_fusion_enabled` draws a DepthAnything fusion HUD (visual near-obstacle cue only; no avoidance maneuver yet).
+When enabled (View), sticks are overridden: vision drives `forward` + `spin` only via the active backend (`set_car_motion` on Yahboom). Stick/trigger gauges hide while following; a colour LED (grey=manual, green/red=follow) shows the active mode. Lost ball: wait → encoder ~360° spin → IMU compass fix → pause → retreat → repeat.
+
+LAB blob colours live only under `ball_follow.colors` in `config.json` (and `color_order` for Start cycling). Encoder closed-loop allows low `min_*_axis` trim (no Keyestudio-style high breakaway).
+
+Optional `ball_follow.depth_fusion_enabled`: DepthAnything runs **async** (one frame in flight; HUD stays fluid). Ball detect/track/drive are independent — depth busy only freezes the last distance band. `depth_view`: `blend` / `depth` / `rgb`. `depth_interval_ms` can be low (e.g. 50) in `depth` mode. `depth_contour_thickness` dilates Canny edges (1–4). Display only — approach distance still uses blob size, not depth.
 
 ## Yahboom path (no Maix wheel mixer)
 
