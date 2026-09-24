@@ -13,6 +13,10 @@ from lib.health.peripheral_checklist import PeripheralChecklist
 
 
 class PeripheralHealthChecker:
+  YAHBOOM_POLL_COUNT = 12
+  YAHBOOM_POLL_SLEEP_S = 0.04
+  YAHBOOM_MIN_VOLTS = 6.0
+
   """Probe Xbox, camera, and either Yahboom USB or ESP link."""
 
   def __init__(
@@ -69,14 +73,14 @@ class PeripheralHealthChecker:
         PeripheralCheck(name="IMU", ok=False, detail="skipped"),
         PeripheralCheck(name="Encoders", ok=False, detail="skipped"),
       ]
-    for _ in range(12):
+    for _ in range(self.YAHBOOM_POLL_COUNT):
       board.poll()
-      time.sleep(0.04)
+      time.sleep(self.YAHBOOM_POLL_SLEEP_S)
     bat = board.battery()
     imu = board.imu_attitude()
     enc = board.read_encoders()
     link_ok = bat is not None or imu is not None
-    bat_ok = bat is not None and bat.volts >= 6.0
+    bat_ok = bat is not None and bat.volts >= self.YAHBOOM_MIN_VOLTS
     imu_ok = imu is not None
     enc_ok = board.has_encoder_report()
     bat_detail = "no report" if bat is None else f"{bat.volts:.1f} V"
@@ -130,8 +134,8 @@ class PeripheralHealthChecker:
       print(f"checklist ESP UART: {exc}")
       try:
         client.close()
-      except Exception:
-        pass
+      except Exception as swallowed:
+        print(f"peripheral_health_checker.py: {swallowed}")
       return None
     try:
       bat = client.command("BAT", timeout_s=2.0)
@@ -151,8 +155,8 @@ class PeripheralHealthChecker:
       print(f"checklist ESP USB: {exc}")
       try:
         client.close()
-      except Exception:
-        pass
+      except Exception as swallowed:
+        print(f"peripheral_health_checker.py: {swallowed}")
       return None
     try:
       bat = client.command("BAT", timeout_s=2.0)
@@ -239,8 +243,8 @@ class PeripheralHealthChecker:
       print(f"checklist ESP rear UART: {exc}")
       try:
         client.close()
-      except Exception:
-        pass
+      except Exception as swallowed:
+        print(f"peripheral_health_checker.py: {swallowed}")
       return [
         PeripheralCheck(
           name="ESP rear UART",

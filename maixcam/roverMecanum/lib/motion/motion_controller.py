@@ -53,16 +53,27 @@ class MotionController:
       self._chassis.initialize(settle_s=settle_s)
     try:
       self.stop()
-    except OSError:
-      pass
+    except OSError as stop_error:
+      print(f"motion: stop after init: {stop_error}")
 
   def set_max_speed(self, speed: int) -> None:
     """Set the session max-speed scaler used by teleop (0..255)."""
-    self._max_speed = max(0, min(255, int(speed)))
+    self._max_speed = max(0, min(255, speed))
 
   def last_wheel_speeds(self) -> WheelSpeeds:
     """Return the last commanded wheel setpoints (for HUD / tests)."""
     return self._last_speeds
+
+  def read_encoders(self) -> EncoderCounts:
+    """Return encoder totals from the active wheel or chassis backend."""
+    if self._wheel is not None:
+      return self._wheel.read_encoders()
+    assert self._chassis is not None
+    return self._chassis.read_encoders()
+
+  def odometry(self) -> EncoderOdometry:
+    """Return the encoder odometry helper used for yaw estimates."""
+    return self._odometry
 
   def drive(self, command: DriveCommand) -> WheelSpeeds:
     """Mix/send a continuous teleop command (wheels or chassis velocity)."""

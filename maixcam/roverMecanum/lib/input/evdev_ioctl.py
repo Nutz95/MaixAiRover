@@ -4,6 +4,8 @@ import array
 import fcntl
 import struct
 
+from lib.input.abs_info import AbsInfo
+
 # struct input_absinfo { value, minimum, maximum, fuzz, flat, resolution }
 _ABSINFO_FMT = "iiiiii"
 _ABSINFO_SIZE = struct.calcsize(_ABSINFO_FMT)
@@ -18,7 +20,7 @@ def read_absinfo(fd, axis_code):
   """
   Read kernel ABS state for one axis.
 
-  Returns (value, minimum, maximum, flat) or None if ioctl unsupported.
+  Returns AbsInfo or None if ioctl unsupported.
   """
   if fd is None:
     return None
@@ -26,6 +28,7 @@ def read_absinfo(fd, axis_code):
   buf = array.array("i", [0] * 6)
   try:
     fcntl.ioctl(fileno, _eviocgabs_request(axis_code), buf, True)
-    return buf[0], buf[1], buf[2], buf[4]
-  except OSError:
+    return AbsInfo(value=buf[0], minimum=buf[1], maximum=buf[2], flat=buf[4])
+  except OSError as ioctl_error:
+    print(f"evdev: EVIOCGABS({axis_code}): {ioctl_error}")
     return None

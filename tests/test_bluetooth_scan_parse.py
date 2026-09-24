@@ -66,12 +66,10 @@ def test_bond_ready_requires_paired_and_connected():
   assert BluetoothctlRunner.bond_ready(output) is True
   assert BluetoothctlRunner.bond_ready("\tPaired: yes\n\tConnected: no\n") is False
   runner = BluetoothctlRunner()
-  exact, partial, seen = runner._match_scan_output(
-    SAMPLE, ["xbox wireless controller"]
-  )
-  assert exact == "78:86:2E:AC:8D:03"
-  assert seen >= 2
-  assert partial is None or partial == exact
+  match = runner._match_scan_output(SAMPLE, ["xbox wireless controller"])
+  assert match.exact_mac == "78:86:2E:AC:8D:03"
+  assert match.devices_seen >= 2
+  assert match.partial_mac is None or match.partial_mac == match.exact_mac
 
 
 def test_pairing_adv_requires_manufacturer_or_new_xbox():

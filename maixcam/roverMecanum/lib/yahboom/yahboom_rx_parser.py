@@ -16,6 +16,11 @@ from lib.yahboom.yahboom_protocol import (
 )
 
 
+_IMU_RAW_SCALE = 10000.0
+_RAD_TO_DEG = 57.2957795
+_BATTERY_TENTHS = 10.0
+
+
 class YahboomRxParser:
   """Parse auto-report speed/battery, IMU attitude, and encoder frames."""
 
@@ -68,13 +73,13 @@ class YahboomRxParser:
     if ext_type == FUNC_REPORT_SPEED and len(payload) >= 7:
       # vx,vy,vz int16 le + battery uint8 tenths of a volt
       tenths = struct.unpack_from("B", payload, 6)[0]
-      self.last_battery = YahboomBattery(volts=tenths / 10.0)
+      self.last_battery = YahboomBattery(volts=tenths / _BATTERY_TENTHS)
     elif ext_type == FUNC_REPORT_IMU_ATT and len(payload) >= 6:
       roll, pitch, yaw = struct.unpack_from("<hhh", payload, 0)
       self.last_imu = YahboomImuAttitude(
-        roll_deg=roll / 10000.0 * 57.2957795,
-        pitch_deg=pitch / 10000.0 * 57.2957795,
-        yaw_deg=yaw / 10000.0 * 57.2957795,
+        roll_deg=roll / _IMU_RAW_SCALE * _RAD_TO_DEG,
+        pitch_deg=pitch / _IMU_RAW_SCALE * _RAD_TO_DEG,
+        yaw_deg=yaw / _IMU_RAW_SCALE * _RAD_TO_DEG,
       )
     elif ext_type == FUNC_REPORT_ENCODER and len(payload) >= 16:
       m1, m2, m3, m4 = struct.unpack_from("<iiii", payload, 0)

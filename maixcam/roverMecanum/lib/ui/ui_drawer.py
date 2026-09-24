@@ -5,6 +5,7 @@ import math
 from maix import image
 
 from lib.input.controller_button import ControllerButton
+from lib.ball_follow.ball_follow_hud import BallFollowHud
 from lib.ui.hud_instruments import HudInstruments
 from lib.ui.ui_rect import UiRect
 
@@ -20,6 +21,7 @@ class UiDrawer:
     self.width = width
     self.height = height
     self._img_back = self._load_back_btn(width)
+    self._ball_hud = BallFollowHud(width, height)
     self._layout_buttons()
 
   def _top_battery_y(self) -> int:
@@ -78,6 +80,7 @@ class UiDrawer:
     wheel_fl: int = 0,
     wheel_fr: int = 0,
     motor_limit: int = 50,
+    ball_snapshot=None,
   ) -> None:
     """Draw HUD: speed bar, instruments, sticks, connection buttons."""
     bx = self._back_pad
@@ -85,6 +88,9 @@ class UiDrawer:
     icon_x = bx.x + (bx.width - self._img_back.width()) // 2
     icon_y = bx.y + (bx.height - self._img_back.height()) // 2
     img.draw_image(icon_x, icon_y, self._img_back)
+
+    if ball_snapshot is not None:
+      self._ball_hud.draw(img, ball_snapshot)
 
     if connected:
       self._draw_bottom_bar(img)

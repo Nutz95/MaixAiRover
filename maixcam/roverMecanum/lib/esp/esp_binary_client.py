@@ -58,8 +58,8 @@ class EspBinaryClient:
       except Exception:
         try:
           client.close()
-        except Exception:
-          pass
+        except Exception as swallowed:
+          print(f"esp_binary_client.py: {swallowed}")
         self._transport = None
         self._link_name = ""
     raise RuntimeError("no ESP binary link (UART4 / USB)")
@@ -70,8 +70,8 @@ class EspBinaryClient:
       if self._transport is not None:
         try:
           self._transport.close()
-        except Exception:
-          pass
+        except Exception as swallowed:
+          print(f"esp_binary_client.py: {swallowed}")
       self._transport = None
       self._link_name = ""
       self._rx = b""

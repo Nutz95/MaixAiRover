@@ -92,8 +92,8 @@ class Ch340UsbSerial:
     if self._handle and self._claimed:
       try:
         self._ctrl_out(_REQ_MODEM_CTRL, 0x0000, 0x0000)
-      except Exception:
-        pass
+      except Exception as modem_error:
+        print(f"ch340: modem clear: {modem_error}")
       lib.libusb_release_interface(self._handle, 0)
       self._claimed = False
     if self._handle:

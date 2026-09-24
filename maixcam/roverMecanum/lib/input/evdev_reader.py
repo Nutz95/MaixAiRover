@@ -7,7 +7,7 @@ from lib.input.controller_button import ControllerButton
 from lib.input.evdev_axis_mapper import EvdevAxisMapper
 from lib.input.evdev_trigger_mapper import EvdevTriggerMapper
 from lib.input.evdev_constants import (
-  ABS_HAT0X, ABS_HAT0Y, BTN_A, BTN_B, BTN_DPAD_DOWN, BTN_DPAD_LEFT, BTN_DPAD_RIGHT,
+  ABS_HAT0X, ABS_HAT0Y, AXIS_MAX, BTN_A, BTN_B, BTN_DPAD_DOWN, BTN_DPAD_LEFT, BTN_DPAD_RIGHT,
   BTN_DPAD_UP, BTN_SELECT, BTN_START, BTN_THUMBL, BTN_THUMBR, BTN_TL, BTN_TL2,
   BTN_TR, BTN_TR2, BTN_X, BTN_Y, EV_ABS, EV_KEY, EV_SYN, SYN_REPORT,
   default_abs_range,
@@ -70,20 +70,23 @@ class EvdevReader:
       info = read_absinfo(self._file, code)
       if info is not None:
         self.kernel_state_available = True
-        raw, min_v, max_v, flat = info
-        self._ensure_mapper_with_range(code, raw, min_v, max_v, flat, prefer_trigger)
+        self._ensure_mapper_with_range(
+          code, info.value, info.minimum, info.maximum, info.flat, prefer_trigger,
+        )
         continue
-      min_v, max_v, flat = self._axis_range(code, prefer_trigger)
-      raw = min_v if prefer_trigger else (min_v + max_v) // 2
-      self._ensure_mapper_with_range(code, raw, min_v, max_v, flat, prefer_trigger)
+      axis_range = self._axis_range(code, prefer_trigger)
+      raw = axis_range.minimum if prefer_trigger else (axis_range.minimum + axis_range.maximum) // 2
+      self._ensure_mapper_with_range(
+        code, raw, axis_range.minimum, axis_range.maximum, axis_range.flat, prefer_trigger,
+      )
 
   def close(self):
     """Close the evdev file descriptor."""
     if self._file is not None:
       try:
         self._file.close()
-      except OSError:
-        pass
+      except OSError as close_error:
+        print(f'evdev: close: {close_error}')
       self._file = None
 
   def drain_available(self):
@@ -110,8 +113,9 @@ class EvdevReader:
       info = read_absinfo(self._file, code)
       if info is not None:
         self.kernel_state_available = True
-        raw, min_v, max_v, flat = info
-        self._ensure_mapper_with_range(code, raw, min_v, max_v, flat, code in trigger_codes)
+        self._ensure_mapper_with_range(
+          code, info.value, info.minimum, info.maximum, info.flat, code in trigger_codes,
+        )
         continue
       val = self._sysfs.read_abs_value(self.event_path, code)
       if val is not None:
@@ -172,7 +176,7 @@ class EvdevReader:
     elif ev_type == EV_KEY:
       self._feed_key(code, value)
     elif ev_type == EV_SYN and code == SYN_REPORT:
-      pass
+      return
 
   def _axis_range(self, code, prefer_trigger=False):
     info = self._sysfs.read_absinfo_real(self.event_path, code)
@@ -181,7 +185,8 @@ class EvdevReader:
     return default_abs_range(code, prefer_trigger=prefer_trigger)
 
   def _create_mapper(self, code, prefer_trigger):
-    min_v, max_v, flat = self._axis_range(code, prefer_trigger)
+    axis_range = self._axis_range(code, prefer_trigger)
+    min_v, max_v, flat = axis_range.minimum, axis_range.maximum, axis_range.flat
     if prefer_trigger and max_v - min_v > 1024:
       prefer_trigger = False
     if prefer_trigger:
@@ -240,10 +245,10 @@ class EvdevReader:
       self.state.set_button(ControllerButton.RB, pressed)
       return
     if code == BTN_TL2:
-      self._lt_btn = 32767 if pressed else 0
+      self._lt_btn = AXIS_MAX if pressed else 0
       return
     if code == BTN_TR2:
-      self._rt_btn = 32767 if pressed else 0
+      self._rt_btn = AXIS_MAX if pressed else 0
       return
     if code == BTN_DPAD_LEFT:
       self._dpad_btn_x = -1 if value else 0

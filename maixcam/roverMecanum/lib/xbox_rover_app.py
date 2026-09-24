@@ -2,9 +2,10 @@
 
 import threading
 
-from maix import app, display, image, time, touchscreen
+from maix import app, display, time, touchscreen
 
 from lib.input.bluetooth_installer import BluetoothInstaller
+from lib.ball_follow.ball_follow_runtime import BallFollowRuntime
 from lib.camera.camera_config import CameraConfig
 from lib.camera.camera_preview_service import CameraPreviewService
 from lib.ui.checklist_panel import ChecklistPanel
@@ -12,7 +13,6 @@ from lib.config.config_store import ConfigStore
 from lib.ui.debug_panel import DebugPanel
 from lib.motion.drive_backend_config import DriveBackendConfig
 from lib.motion.drive_backend_kind import DriveBackendKind
-from lib.esp.esp_debug_action import EspDebugAction
 from lib.esp.esp_debug_session import EspDebugSession
 from lib.esp.esp_link_config import EspLinkConfig
 from lib.ui.hud_instruments import from_telem, from_yahboom
@@ -22,10 +22,12 @@ from lib.config.motor_config import MotorConfig
 from lib.health.peripheral_health_checker import PeripheralHealthChecker
 from lib.config.rover_config import RoverConfig
 from lib.input.teleop_control_thread import TeleopControlThread
+from lib.ui.hud_composer import HudComposer
+from lib.ui.overlay_session import OverlaySession
+from lib.ui.overlay_touch_router import OverlayTouchRouter
 from lib.ui.touch_point import TouchPoint
 from lib.ui.ui_drawer import UiDrawer
 from lib.input.xbox_input_service import XboxInputService
-from lib.yahboom.yahboom_debug_action import YahboomDebugAction
 from lib.ui.yahboom_debug_panel import YahboomDebugPanel
 from lib.yahboom.yahboom_debug_session import YahboomDebugSession
 
@@ -105,6 +107,13 @@ class XboxRoverApp:
     self._speed_step = rover_cfg.speed_step
     self._last_speed_change_ms = 0
     self._rover.set_max_speed(self._session_max_speed)
+    self._ball = BallFollowRuntime(
+      self._config,
+      self._rover,
+      motor_cfg,
+      yahboom_board=self._yahboom_board,
+      get_frame=self._ball_frame,
+    )
     self._checklist = None
     self._checklist_open = False
     self._checklist_lock = threading.Lock()
@@ -128,6 +137,9 @@ class XboxRoverApp:
       send_interval_ms=rover_cfg.send_interval_ms,
       on_tick=self._control_tick,
     )
+    self._touch_router = OverlayTouchRouter(self)
+    self._overlays = OverlaySession(self)
+    self._hud = HudComposer(self)
 
   def run(self) -> None:
     """Teleop in background; main thread draws HUD (Maix display API)."""
@@ -139,10 +151,10 @@ class XboxRoverApp:
       while not app.need_exit() and not self._exit.is_set():
         self._read_touch()
         self._handle_touch()
-        self._on_connection_change()
+        self._overlays.on_connection_change()
         now = time.ticks_ms()
         if now - last_draw >= self._display_interval_ms:
-          self._draw_frame()
+          self._hud.draw()
           last_draw = time.ticks_ms()
         else:
           time.sleep_ms(loop_sleep_ms)
@@ -155,6 +167,10 @@ class XboxRoverApp:
       return
     self._shutdown_done = True
     self._exit.set()
+    try:
+      self._ball.disable()
+    except Exception as ball_error:
+      print(f"shutdown: ball_follow: {ball_error}")
     try:
       self._rover.send_stop()
     except Exception as stop_error:
@@ -189,9 +205,18 @@ class XboxRoverApp:
   def _control_tick(self) -> None:
     """Light work on the control thread (config reload + LB/RB + sensor cache)."""
     self._apply_rover_config()
+    if self._xbox.consume_mode_toggle():
+      self._ball.toggle_mode()
+    if self._xbox.consume_color_toggle():
+      self._ball.cycle_color()
     self._handle_speed_bumpers()
     self._refresh_hud_sensors()
 
+  def _ball_frame(self):
+    """Latest camera frame for ball detection (may be None)."""
+    if self._camera is None:
+      return None
+    return self._camera.get_frame()
   def _refresh_hud_sensors(self) -> None:
     """Pump Yahboom RX + cache HUD instruments (never called from draw)."""
     now = time.ticks_ms()
@@ -217,7 +242,8 @@ class XboxRoverApp:
 
   def _apply_rover_config(self) -> None:
     """Hot-reload rover tuning; reset session speed if file max_speed changes."""
-    self._config_store.reload_if_changed()
+    reloaded = self._config_store.reload_if_changed()
+    self._config = self._config_store.get()
     rover_cfg = self._config_store.rover_settings()
     if rover_cfg.max_speed != self._config_max_speed:
       self._config_max_speed = rover_cfg.max_speed
@@ -225,6 +251,9 @@ class XboxRoverApp:
     self._speed_step = rover_cfg.speed_step
     self._send_interval = rover_cfg.send_interval_ms
     self._rover.set_max_speed(self._session_max_speed)
+    self._control.set_send_interval_ms(self._send_interval)
+    if reloaded:
+      self._ball.apply_config(self._config)
 
   def _handle_speed_bumpers(self) -> None:
     """LB = slower, RB = faster (session max_speed shown in HUD)."""
@@ -273,88 +302,10 @@ class XboxRoverApp:
     else:
       print(f"display: {self._display_fps} fps target")
 
-  def _draw_frame(self) -> None:
-    with self._checklist_lock:
-      checklist_open = self._checklist_open
-      checklist = self._checklist
-    debug_open = False
-    debug_link = ""
-    debug_status = ""
-    debug_telem = None
-    yahboom_snap = None
-    # Never poll USB here: only snapshot when a DBG panel is already open.
-    if self._yahboom_debug is not None and self._yahboom_debug.is_open():
-      yahboom_snap = self._yahboom_debug.snapshot()
-      debug_open = True
-    elif self._debug is not None and self._debug.is_open():
-      snap_dbg = self._debug.snapshot()
-      debug_open = True
-      debug_link = snap_dbg.link_name
-      debug_status = snap_dbg.status
-      debug_telem = snap_dbg.telem
-
-    if checklist_open:
-      frame = image.Image(self._disp.width(), self._disp.height(), bg=image.COLOR_BLACK)
-      self._checklist_panel.draw(frame, checklist)
-      self._disp.show(frame)
-      return
-
-    if debug_open:
-      frame = image.Image(self._disp.width(), self._disp.height(), bg=image.COLOR_BLACK)
-      if yahboom_snap is not None:
-        self._yahboom_debug_panel.draw(frame, yahboom_snap)
-      else:
-        self._debug_panel.draw(
-          frame, link_name=debug_link, status=debug_status, telem=debug_telem,
-        )
-      self._disp.show(frame)
-      return
-
-    frame = None
-    if self._camera is not None:
-      frame = self._camera.get_frame()
-    if frame is None:
-      frame = image.Image(self._disp.width(), self._disp.height(), bg=image.COLOR_BLACK)
-    else:
-      frame = self._drawable_rgb(frame)
-    snap = self._xbox.snapshot()
-    wheels = self._rover.last_wheel_speeds()
-    self._ui.draw_overlay(
-      frame,
-      snap.connected,
-      snap.busy,
-      snap.state,
-      snap.drive,
-      self._session_max_speed,
-      status=snap.status,
-      progress=snap.progress,
-      instruments=self._hud_instruments(),
-      wheel_fl=wheels.front_left,
-      wheel_fr=wheels.front_right,
-      motor_limit=self._motor_limit,
-    )
-    self._disp.show(frame)
-
   def _hud_instruments(self):
     """Cached instruments filled by the teleop thread (no USB on draw path)."""
     with self._hud_lock:
       return self._hud_instruments_cache
-
-  @staticmethod
-  def _drawable_rgb(frame):
-    """Return an RGB888 image MaixPy can draw on."""
-    try:
-      fmt = frame.format()
-    except Exception:
-      return frame
-    if fmt in (image.Format.FMT_RGB888, image.Format.FMT_BGR888):
-      return frame
-    # MaixCAM2: YUV→RGB via to_format is often unimplemented — blank RGB HUD.
-    try:
-      return frame.to_format(image.Format.FMT_RGB888)
-    except Exception as exc:
-      print(f"hud: cannot convert frame ({exc}); RGB blank")
-      return image.Image(frame.width(), frame.height(), bg=image.COLOR_BLACK)
 
   def _read_touch(self) -> None:
     """Latch one press edge — holding a finger must not re-fire after a modal closes."""
@@ -370,91 +321,6 @@ class XboxRoverApp:
     self._touch_was_pressed = True
     with self._touch_lock:
       self._touch_action = None
-
-  def _on_connection_change(self) -> None:
-    snap = self._xbox.snapshot()
-    if snap.connected and not self._was_connected:
-      self._open_checklist()
-      threading.Thread(
-        target=self._run_peripheral_checklist, daemon=True, name="periph-check",
-      ).start()
-    if not snap.connected and self._was_connected:
-      self._close_checklist()
-      self._close_debug()
-      if self._debug is not None:
-        self._debug.stop_link()
-      if self._rear_debug is not None:
-        self._rear_debug.stop_link()
-    if snap.connected != self._was_connected or snap.busy != self._was_busy:
-      self._arm_touch_ignore()
-    self._was_connected = snap.connected
-    self._was_busy = snap.busy
-
-  def _open_checklist(self) -> None:
-    with self._checklist_lock:
-      self._checklist = None
-      self._checklist_open = True
-    if self._camera is not None:
-      self._camera.set_paused(True)
-
-  def _close_checklist(self) -> None:
-    with self._checklist_lock:
-      self._checklist_open = False
-      self._checklist = None
-    self._arm_touch_ignore()
-    if self._xbox.snapshot().connected:
-      if self._debug is not None:
-        self._debug.start_link()
-      if self._rear_debug is not None:
-        self._rear_debug.start_link()
-    debug_open = (
-      (self._yahboom_debug is not None and self._yahboom_debug.is_open())
-      or (self._debug is not None and self._debug.is_open())
-    )
-    if self._camera is not None and not debug_open:
-      self._camera.set_paused(False)
-
-  def _open_debug(self) -> None:
-    if self._yahboom_debug is not None:
-      if self._camera is not None:
-        self._camera.set_paused(True)
-      self._yahboom_debug.open()
-      self._arm_touch_ignore()
-      return
-    if self._debug is None:
-      return
-    if self._camera is not None:
-      self._camera.set_paused(True)
-    self._debug.open()
-    self._arm_touch_ignore()
-
-  def _close_debug(self) -> None:
-    was_open = False
-    if self._yahboom_debug is not None and self._yahboom_debug.is_open():
-      self._yahboom_debug.close()
-      was_open = True
-    elif self._debug is not None and self._debug.is_open():
-      self._debug.close()
-      was_open = True
-    if was_open:
-      self._arm_touch_ignore()
-    if was_open and self._camera is not None and not self._checklist_open:
-      self._camera.set_paused(False)
-
-  def _run_peripheral_checklist(self) -> None:
-    """Probe Yahboom or ESP after pad connect; fill the opaque checklist panel."""
-    report = self._health.run(
-      xbox_connected=True,
-      camera_ok=self._camera is not None,
-      motion_is_stub=self._rover.is_stub(),
-      yahboom_board=self._yahboom_board,
-    )
-    print("peripheral checklist:")
-    for line in report.log_lines():
-      print(f"  {line}")
-    with self._checklist_lock:
-      if self._checklist_open:
-        self._checklist = report
 
   def _request_exit(self) -> None:
     self._xbox.request_stop()
@@ -475,68 +341,7 @@ class XboxRoverApp:
         self._touch_action = None
     if action is None:
       return
-
-    with self._checklist_lock:
-      checklist_open = self._checklist_open
-      checklist_ready = self._checklist is not None
-    debug_open = (
-      (self._yahboom_debug is not None and self._yahboom_debug.is_open())
-      or (self._debug is not None and self._debug.is_open())
-    )
-
-    if checklist_open:
-      if checklist_ready and self._checklist_panel.ok_rect().contains(action.x, action.y):
-        self._close_checklist()
-      elif self._ui.back_rect().contains(action.x, action.y):
-        self._request_exit()
-      return
-
-    if debug_open and self._yahboom_debug is not None:
-      panel = self._yahboom_debug_panel
-      if panel.close_rect().contains(action.x, action.y):
-        self._close_debug()
-      elif panel.poll_rect().contains(action.x, action.y):
-        self._yahboom_debug.run_action(YahboomDebugAction.POLL)
-      elif panel.stop_rect().contains(action.x, action.y):
-        self._yahboom_debug.run_action(YahboomDebugAction.STOP)
-      elif panel.fwd_rect().contains(action.x, action.y):
-        self._yahboom_debug.run_action(YahboomDebugAction.FWD)
-      elif panel.init_rect().contains(action.x, action.y):
-        self._yahboom_debug.run_action(YahboomDebugAction.INIT)
-      return
-
-    if debug_open and self._debug is not None:
-      if self._debug_panel.close_rect().contains(action.x, action.y):
-        self._close_debug()
-      elif self._debug_panel.ping_rect().contains(action.x, action.y):
-        self._debug.run_action(EspDebugAction.PING)
-      elif self._debug_panel.stop_rect().contains(action.x, action.y):
-        self._debug.run_action(EspDebugAction.STOP)
-      elif self._debug_panel.fwd_rect().contains(action.x, action.y):
-        self._debug.run_action(EspDebugAction.FWD)
-      elif self._debug_panel.init_rect().contains(action.x, action.y):
-        self._debug.run_action(EspDebugAction.INIT)
-      return
-
-    snap = self._xbox.snapshot()
-    if self._ui.back_rect().contains(action.x, action.y):
-      self._request_exit()
-      return
-    if not snap.busy and not snap.connected:
-      if self._ui.pair_rect().contains(action.x, action.y):
-        self._xbox.start_pairing()
-      elif self._ui.connect_rect().contains(action.x, action.y):
-        self._xbox.start_connect()
-      return
-    if snap.connected and self._ui.debug_rect().contains(action.x, action.y):
-      self._open_debug()
-      return
-    if snap.connected and self._ui.disconnect_rect().contains(action.x, action.y):
-      self._xbox.request_stop()
-      try:
-        self._rover.send_stop()
-      except OSError:
-        pass
+    self._touch_router.handle(action)
 
   def _send_drive(self, drive) -> None:
     with self._checklist_lock:
@@ -547,17 +352,6 @@ class XboxRoverApp:
     if self._yahboom_debug is not None and self._yahboom_debug.is_open():
       return
     try:
-      if drive.preset_action is not None:
-        self._rover.send_preset(drive.preset_action)
-        return
-      if drive.is_idle():
-        self._rover.send_stop()
-        return
-      self._rover.send_joystick(
-        drive.axis_strafe,
-        drive.axis_forward,
-        drive.axis_spin,
-        drive.axis_pivot,
-      )
+      self._ball.dispatch(drive)
     except Exception as exc:
       print(f"drive: {type(exc).__name__}: {exc}")

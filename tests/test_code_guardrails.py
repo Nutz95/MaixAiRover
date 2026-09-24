@@ -66,6 +66,10 @@ def test_no_dict_list_return_annotations() -> None:
     ("stub_i2c_bus.py", "scan"),
     ("stub_i2c_bus.py", "transactions"),
     ("peripheral_checklist.py", "log_lines"),
+    ("config_parse_helpers.py", "section"),
+    ("config_parse_helpers.py", "as_str_list"),
+    ("ball_follow_settings.py", "thresholds"),
+    ("ball_follow_settings.py", "thresholds_for"),
   }
   violations = []
   for path in _iter_lib_py():
@@ -100,6 +104,46 @@ def test_no_getattr_setattr() -> None:
   assert not violations, "no getattr/setattr:\n  " + "\n  ".join(violations)
 
 
+def test_no_silent_except_pass() -> None:
+  """except handlers must log/print before pass or continue."""
+  violations = []
+  for path in _iter_lib_py():
+    with open(path, encoding="utf-8") as handle:
+      source = handle.read()
+      tree = ast.parse(source, filename=path)
+    for node in ast.walk(tree):
+      if not isinstance(node, ast.ExceptHandler):
+        continue
+      body = node.body
+      if not body:
+        continue
+      last = body[-1]
+      is_silent_exit = (
+        isinstance(last, ast.Pass)
+        or (isinstance(last, ast.Continue))
+        or (isinstance(last, ast.Return) and last.value is None and len(body) == 1)
+      )
+      if not is_silent_exit:
+        continue
+      # Allow bare return only if a prior statement logs.
+      logged = False
+      for stmt in body:
+        if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call):
+          func = stmt.value.func
+          if isinstance(func, ast.Name) and func.id in ("print", "log"):
+            logged = True
+          if isinstance(func, ast.Attribute) and func.attr in (
+            "error", "warning", "info", "debug", "exception", "print",
+          ):
+            logged = True
+      if not logged:
+        violations.append(
+          f"{os.path.basename(path)}:{node.lineno} silent except "
+          f"{type(last).__name__.lower()}"
+        )
+  assert not violations, "silent except:\n  " + "\n  ".join(violations)
+
+
 def test_shipped_drive_backend_valid() -> None:
   """config.json drive_backend must be a known DriveBackendKind value."""
   with open(CONFIG_JSON, encoding="utf-8") as handle:
@@ -113,6 +157,7 @@ def main() -> None:
   test_no_tuple_return_annotations()
   test_no_dict_list_return_annotations()
   test_no_getattr_setattr()
+  test_no_silent_except_pass()
   test_shipped_drive_backend_valid()
   print("code_guardrails: ok")
 

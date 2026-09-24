@@ -12,6 +12,10 @@ from lib.input.bluetoothctl_runner import BluetoothctlRunner
 class BluetoothctlSession:
   """One bluetoothctl process for the whole app (agent NoInputNoOutput)."""
 
+  AGENT_SETTLE_S = 0.4
+  REPAIR_GAP_S = 2.0
+  QUIT_WAIT_S = 3.0
+
   def __init__(self) -> None:
     self._lock = threading.Lock()
     self._chunks = []
@@ -37,12 +41,12 @@ class BluetoothctlSession:
     self._master = master
     self._alive = True
     threading.Thread(target=self._read_loop, daemon=True, name="btctl-pty").start()
-    time.sleep(0.4)
+    time.sleep(self.AGENT_SETTLE_S)
     self.send("power on")
     self.send("pairable on")
     self.send("agent NoInputNoOutput")
     self.send("default-agent")
-    time.sleep(0.4)
+    time.sleep(self.AGENT_SETTLE_S)
     print("bt: agent alive (NoInputNoOutput)")
 
   def close(self) -> None:
@@ -52,19 +56,19 @@ class BluetoothctlSession:
     self._alive = False
     try:
       self.send("quit")
-    except OSError:
-      pass
+    except OSError as quit_error:
+      print(f"bt: quit: {quit_error}")
     if self._proc is not None:
       try:
-        self._proc.wait(timeout=3)
+        self._proc.wait(timeout=self.QUIT_WAIT_S)
       except subprocess.TimeoutExpired:
         self._proc.kill()
       self._proc = None
     if self._master is not None:
       try:
         os.close(self._master)
-      except OSError:
-        pass
+      except OSError as close_error:
+        print(f"bt: pty close: {close_error}")
       self._master = None
 
   def send(self, cmd: str) -> None:
@@ -80,7 +84,7 @@ class BluetoothctlSession:
     mac = mac.upper()
     print("bt: PAIR = remove old bond + encrypted re-pair (hold SYNC)")
     self._remove_bond(mac)
-    time.sleep(2.0)
+    time.sleep(self.REPAIR_GAP_S)
 
     pair_out = ""
     seen = ""
@@ -106,7 +110,7 @@ class BluetoothctlSession:
       self.send("scan off")
       if attempt == 0:
         self._remove_device(mac)
-        time.sleep(2.0)
+        time.sleep(self.REPAIR_GAP_S)
 
     self.send("scan off")
     if not BluetoothctlRunner.pair_succeeded(pair_out):
@@ -130,7 +134,7 @@ class BluetoothctlSession:
     )
     if "Failed to connect" in out or "Paired: no" in out:
       self.send(f"info {mac}")
-      time.sleep(0.4)
+      time.sleep(self.AGENT_SETTLE_S)
       return self._since(mark)
     self._wait_hid_ready(mac)
     return self._since(mark)
@@ -196,7 +200,8 @@ class BluetoothctlSession:
     mac = ""
     while time.time() < deadline:
       chunk = self._since(mark)
-      exact, partial, _seen = runner._match_scan_output(chunk, targets)
+      match = runner._match_scan_output(chunk, targets)
+      exact, partial = match.exact_mac, match.partial_mac
       mac = exact or partial or ""
       if mac:
         break

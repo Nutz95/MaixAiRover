@@ -25,8 +25,8 @@ class EspWifiClient:
     if self._sock is not None:
       try:
         self._sock.close()
-      except OSError:
-        pass
+      except OSError as swallowed:
+        print(f"esp_wifi_client.py: {swallowed}")
     self._sock = None
 
   def command(self, line: str, timeout_s: float = 2.0) -> str:
@@ -49,16 +49,16 @@ class EspWifiClient:
         if not chunk:
           break
         self._buf += chunk
-    except (OSError, socket.timeout):
-      pass
+    except (OSError, socket.timeout) as swallowed:
+      print(f"esp_wifi_client.py: {swallowed}")
 
   def _read_reply(self):
     try:
       chunk = self._sock.recv(4096)
       if chunk:
         self._buf += chunk
-    except socket.timeout:
-      pass
+    except socket.timeout as swallowed:
+      print(f"esp_wifi_client.py: {swallowed}")
     except OSError:
       return None
     while b"\n" in self._buf:

@@ -66,13 +66,13 @@ class XboxAxisLayout:
       if caps & (1 << ABS_GAS) and caps & (1 << ABS_BRAKE):
         return ABS_BRAKE, ABS_GAS
       z_info = sysfs.read_absinfo_real(event_path, ABS_Z)
-      if z_info and cls._is_trigger_range(z_info[0], z_info[1]):
+      if z_info and cls._is_trigger_range(z_info):
         return ABS_Z, ABS_RZ
 
     z_info = sysfs.read_absinfo_real(event_path, ABS_Z)
     rz_info = sysfs.read_absinfo_real(event_path, ABS_RZ)
-    if z_info and rz_info and cls._is_trigger_range(z_info[0], z_info[1]):
-      if cls._is_trigger_range(rz_info[0], rz_info[1]):
+    if z_info and rz_info and cls._is_trigger_range(z_info):
+      if cls._is_trigger_range(rz_info):
         return ABS_Z, ABS_RZ
 
     gas_info = sysfs.read_absinfo_real(event_path, ABS_GAS)
@@ -90,9 +90,9 @@ class XboxAxisLayout:
         return ABS_RX, ABS_RY
 
     z_info = sysfs.read_absinfo_real(event_path, ABS_Z)
-    if z_info and not cls._is_trigger_range(z_info[0], z_info[1]):
+    if z_info and not cls._is_trigger_range(z_info):
       rz_info = sysfs.read_absinfo_real(event_path, ABS_RZ)
-      if rz_info and not cls._is_trigger_range(rz_info[0], rz_info[1]):
+      if rz_info and not cls._is_trigger_range(rz_info):
         return ABS_Z, ABS_RZ
 
     return ABS_Z, ABS_RZ
@@ -103,7 +103,9 @@ class XboxAxisLayout:
     return all(k in evdev_cfg for k in keys)
 
   @staticmethod
-  def _is_trigger_range(min_v, max_v):
+  def _is_trigger_range(axis_range):
+    min_v = axis_range.minimum
+    max_v = axis_range.maximum
     span = max_v - min_v
     if min_v >= 0 and span <= 1024:
       return True

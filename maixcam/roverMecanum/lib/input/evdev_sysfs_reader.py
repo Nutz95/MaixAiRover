@@ -1,5 +1,6 @@
 import os
 
+from lib.input.abs_range import AbsRange
 from lib.input.evdev_constants import ABS_BRAKE, ABS_GAS, ABS_RX, ABS_RY, ABS_RZ, ABS_X, ABS_Y, ABS_Z, default_abs_range
 
 # Linux input subsystem ABS_* names for sysfs paths.
@@ -25,8 +26,8 @@ class EvdevSysfsReader:
       try:
         with open(path, "r") as f:
           return f.read().strip()
-      except OSError:
-        pass
+      except OSError as field_error:
+        print(f"evdev sysfs: {path}: {field_error}")
     return ""
 
   def read_name(self, event_path):
@@ -38,16 +39,16 @@ class EvdevSysfsReader:
     return self.read_field(event_path, "id/vendor")
 
   def read_absinfo_real(self, event_path, axis_code):
-    """Return (min, max, flat) for an ABS axis from sysfs, or None."""
+    """Return AbsRange for an ABS axis from sysfs, or None."""
     for root in self._device_roots(event_path):
       for rel in (f"absinfo/{axis_code}", f"absinfo/{axis_code:02x}"):
         try:
           min_v = int(self._read_text(f"{root}/{rel}/min"))
           max_v = int(self._read_text(f"{root}/{rel}/max"))
           flat = int(self._read_text(f"{root}/{rel}/flat"))
-          return min_v, max_v, flat
-        except (OSError, ValueError):
-          pass
+          return AbsRange(minimum=min_v, maximum=max_v, flat=flat)
+        except (OSError, ValueError) as abs_error:
+          print(f"evdev sysfs absinfo: {abs_error}")
     return None
 
   def read_abs_value(self, event_path, axis_code):
@@ -65,8 +66,8 @@ class EvdevSysfsReader:
       for rel in rels:
         try:
           return int(self._read_text(f"{root}/{rel}"))
-        except (OSError, ValueError):
-          pass
+        except (OSError, ValueError) as value_error:
+          print(f"evdev sysfs abs value: {value_error}")
     return None
 
   def read_abs_capabilities(self, event_path):
@@ -92,8 +93,8 @@ class EvdevSysfsReader:
     add(f"/sys/class/input/{base}/device")
     try:
       add(os.path.realpath(f"/sys/class/input/{base}/device"))
-    except OSError:
-      pass
+    except OSError as realpath_error:
+      print(f"evdev sysfs realpath: {realpath_error}")
     return roots
 
   def _read_text(self, path):

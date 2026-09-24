@@ -41,6 +41,8 @@ class XboxInputService:
     self._handoff = False
     self._pending_speed_lb = False
     self._pending_speed_rb = False
+    self._pending_mode_toggle = False
+    self._pending_color_toggle = False
     self._hid_logged = False
     self._pairing.ensure_agent()
 
@@ -64,6 +66,20 @@ class XboxInputService:
       self._pending_speed_lb = False
       self._pending_speed_rb = False
     return edges
+
+  def consume_mode_toggle(self) -> bool:
+    """Consume one Xbox View/Select edge for the control-mode switch."""
+    with self._lock:
+      toggled = self._pending_mode_toggle
+      self._pending_mode_toggle = False
+      return toggled
+
+  def consume_color_toggle(self) -> bool:
+    """Consume one Xbox Menu/Start edge for green/red blob switching."""
+    with self._lock:
+      toggled = self._pending_color_toggle
+      self._pending_color_toggle = False
+      return toggled
 
   def snapshot(self) -> XboxSnapshot:
     """Return an immutable snapshot for the UI and control loop."""
@@ -94,6 +110,8 @@ class XboxInputService:
       drive = self._mapper.compute(live)
       speed_lb = reader.state.take_edge(ControllerButton.LB)
       speed_rb = reader.state.take_edge(ControllerButton.RB)
+      mode_toggle = reader.state.take_edge(ControllerButton.SELECT)
+      color_toggle = reader.state.take_edge(ControllerButton.START)
       reader.state.pressed_edge.clear()
       with self._lock:
         self.state = live
@@ -102,6 +120,10 @@ class XboxInputService:
           self._pending_speed_lb = True
         if speed_rb:
           self._pending_speed_rb = True
+        if mode_toggle:
+          self._pending_mode_toggle = True
+        if color_toggle:
+          self._pending_color_toggle = True
     except OSError as exc:
       if exc.errno in (errno.ENODEV, errno.ENOENT):
         self._on_reader_lost("Controller disconnected")

@@ -3,6 +3,7 @@
 from lib.config.battery_reading import BatteryReading
 from lib.input.drive_action import DriveAction
 from lib.motion.drive_command import DriveCommand
+from lib.motion.encoder_counts import EncoderCounts
 from lib.motion.motion_controller import MotionController
 from lib.motion.wheel_speeds import WheelSpeeds
 
@@ -71,3 +72,7 @@ class RoverMotionClient:
   def last_wheel_speeds(self) -> WheelSpeeds:
     """Return last commanded wheel setpoints for HUD display."""
     return self._motion.last_wheel_speeds()
+
+  def read_encoders(self) -> EncoderCounts:
+    """Return latest encoder totals from the active drive backend."""
+    return self._motion.read_encoders()

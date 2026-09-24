@@ -14,8 +14,14 @@ Default mapping matches the previous Keyestudio mecanum rover (revision 4).
 | D-pad | Full-axis presets (incl. diagonals) |
 | LB / RB | Decrease / increase session max speed |
 | A | Stop |
+| **View / Select** | Toggle **ball-follow** mode |
+| **Menu / Start** | Cycle ball color (green ↔ red) |
 
 Strafe comes from `trigger_diff` = RT − LT (both pressed → cancel). Config: `mapping.axes.drive_strafe`.
+
+## Ball-follow
+
+When enabled (View), sticks are overridden: vision drives `forward` + `spin` only via the active backend (`set_car_motion` on Yahboom). Lost ball: wait → encoder ~360° spin → IMU compass fix to search-start heading → pause → retreat → repeat. Optional `ball_follow.depth_fusion_enabled` draws a DepthAnything fusion HUD (visual near-obstacle cue only; no avoidance maneuver yet).
 
 ## Yahboom path (no Maix wheel mixer)
 

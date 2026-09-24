@@ -115,8 +115,8 @@ class YahboomDriveBoard:
     try:
       if self._open:
         self.stop()
-    except Exception:
-      pass
+    except Exception as swallowed:
+      print(f"yahboom_drive_board.py: {swallowed}")
     with self._io_lock:
       self._tx.close()
       self._open = False
@@ -124,7 +124,8 @@ class YahboomDriveBoard:
   def _pump_rx_unlocked(self) -> None:
     try:
       chunk = self._tx.read(512)
-    except Exception:
+    except Exception as read_error:
+      print(f"yahboom: rx: {read_error}")
       return
     if chunk:
       self._parser.feed(chunk)

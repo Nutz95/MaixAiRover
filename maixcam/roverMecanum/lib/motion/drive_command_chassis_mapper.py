@@ -5,8 +5,9 @@ from __future__ import annotations
 from lib.motion.chassis_velocity import ChassisVelocity
 from lib.motion.drive_command import DriveCommand
 from lib.yahboom.yahboom_config import YahboomConfig
+from lib.input.evdev_constants import AXIS_MAX
 
-_AXIS_MAX = 32767.0
+_AXIS_MAX = float(AXIS_MAX)
 
 
 class DriveCommandChassisMapper:

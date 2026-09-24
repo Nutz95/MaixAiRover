@@ -8,6 +8,7 @@ from lib.input.drive_action import DriveAction
 from lib.input.drive_action_catalog import DriveActionCatalog
 from lib.input.drive_output import DriveOutput
 from lib.config.rover_config import RoverConfig
+from lib.input.evdev_constants import AXIS_MAX
 
 
 class ControllerMappingEngine:
@@ -124,8 +125,8 @@ class ControllerMappingEngine:
       return 0
     sign = 1 if value > 0 else -1
     mag = abs(value) - deadzone
-    span = max(1, 32767 - deadzone)
-    return sign * min(32767, int(mag * 32767 / span))
+    span = max(1, AXIS_MAX - deadzone)
+    return sign * min(AXIS_MAX, int(mag * AXIS_MAX / span))
 
   def _shape_axis(self, value: int, deadzone: int) -> int:
     """Deadzone, response curve, then sensitivity scale."""
@@ -133,10 +134,10 @@ class ControllerMappingEngine:
     if value == 0:
       return 0
     sign = 1 if value > 0 else -1
-    norm = min(1.0, abs(value) / 32767.0)
+    norm = min(1.0, abs(value) / float(AXIS_MAX))
     norm = apply_curve(norm, self._curve, self._expo)
     norm = min(1.0, norm * self._sensitivity)
-    return sign * int(norm * 32767)
+    return sign * int(norm * AXIS_MAX)
 
   def _dpad_axes(self, state):
     if not self._dpad:

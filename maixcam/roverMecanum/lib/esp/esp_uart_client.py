@@ -7,8 +7,8 @@ try:
   from maix import comm
 
   comm.CommProtocol.set_method("none")
-except Exception:
-  pass
+except Exception as import_error:
+  print(f"esp_uart: optional import: {import_error}")
 
 from maix import err, pinmap, uart
 

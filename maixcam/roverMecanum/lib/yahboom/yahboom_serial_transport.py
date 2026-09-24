@@ -27,8 +27,8 @@ class YahboomSerialTransport:
     if self._ser is not None:
       try:
         self._ser.close()
-      except Exception:
-        pass
+      except Exception as swallowed:
+        print(f"yahboom_serial_transport.py: {swallowed}")
       self._ser = None
 
   def write(self, data: bytes) -> None:

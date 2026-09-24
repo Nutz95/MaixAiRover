@@ -46,16 +46,18 @@ class ConfigStore:
     self._mtime = os.path.getmtime(self.path)
     return self._data
 
-  def reload_if_changed(self):
-    """Reload from disk when the file was modified (hot-tune on device)."""
+  def reload_if_changed(self) -> bool:
+    """Reload from disk when the file was modified. True if reloaded."""
     path = self._explicit_path or resolve_config_path()
     if not os.path.isfile(path):
-      return self.get()
+      self.get()
+      return False
     mtime = os.path.getmtime(path)
     if self._data is None or mtime != self._mtime or path != self.path:
       self.path = path
-      return self.load()
-    return self._data
+      self.load()
+      return True
+    return False
 
   def save(self):
     """Atomically write config to avoid empty-file races with hot-reload."""
@@ -69,11 +71,12 @@ class ConfigStore:
         json.dump(self._data, handle, indent=2)
         handle.write("\n")
       os.replace(tmp_path, self.path)
-    except Exception:
+    except Exception as write_error:
+      print(f"config: save failed: {write_error}")
       try:
         os.unlink(tmp_path)
-      except OSError:
-        pass
+      except OSError as unlink_error:
+        print(f"config: tmp unlink: {unlink_error}")
       raise
     if os.path.isfile(self.path):
       self._mtime = os.path.getmtime(self.path)
@@ -148,7 +151,7 @@ class ConfigStore:
         f" {target_revision} (forward=left_y strafe=triggers spin=right_x pivot=left_x)"
       )
 
-    for section in ("rover", "mapping", "evdev", "camera", "i2c", "motors", "esp", "yahboom"):
+    for section in ("rover", "mapping", "evdev", "camera", "i2c", "motors", "esp", "yahboom", "ball_follow"):
       if section not in base:
         continue
       if section not in self._data:

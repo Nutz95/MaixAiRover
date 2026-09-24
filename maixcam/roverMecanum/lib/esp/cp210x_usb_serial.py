@@ -96,8 +96,8 @@ class Cp210xUsbSerial:
     if self._handle and self._claimed:
       try:
         self._ctrl(_CP210X_IFC_ENABLE, 0)
-      except Exception:
-        pass
+      except Exception as swallowed:
+        print(f"cp210x_usb_serial.py: {swallowed}")
       lib.libusb_release_interface(self._handle, 0)
       self._claimed = False
     if self._handle:

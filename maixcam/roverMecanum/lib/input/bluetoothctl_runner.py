@@ -2,6 +2,8 @@
 
 import re
 
+from lib.input.bluetooth_scan_match import BluetoothScanMatch
+
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]|\x01|\x02")
 
@@ -92,7 +94,7 @@ class BluetoothctlRunner:
     return targets or ["xbox wireless controller"]
 
   def _match_scan_output(self, output, targets):
-    """Parse bluetoothctl device listings; return (exact_mac, partial_mac, seen)."""
+    """Parse bluetoothctl device listings into a BluetoothScanMatch."""
     exact = None
     partial = None
     seen = 0
@@ -117,7 +119,7 @@ class BluetoothctlRunner:
           partial = partial or mac
       if exact:
         break
-    return exact, partial, seen
+    return BluetoothScanMatch(exact_mac=exact, partial_mac=partial, devices_seen=seen)
 
   def _parse_device_line(self, line):
     """Extract MAC + name from a bluetoothctl device line, or None."""
