@@ -82,15 +82,18 @@ class UiDrawer:
     motor_limit: int = 50,
     ball_snapshot=None,
   ) -> None:
-    """Draw HUD: speed bar, instruments, sticks, connection buttons."""
+    """Draw HUD: speed bar, instruments, sticks (hidden in ball-follow)."""
     bx = self._back_pad
     img.draw_rect(bx.x, bx.y, bx.width, bx.height, image.Color.from_rgb(0, 0, 0), thickness=-1)
     icon_x = bx.x + (bx.width - self._img_back.width()) // 2
     icon_y = bx.y + (bx.height - self._img_back.height()) // 2
     img.draw_image(icon_x, icon_y, self._img_back)
 
+    # Always show mode badge (MANUAL / FOLLOW GREEN / FOLLOW RED).
     if ball_snapshot is not None:
       self._ball_hud.draw(img, ball_snapshot)
+
+    ball_follow_on = bool(ball_snapshot is not None and ball_snapshot.enabled)
 
     if connected:
       self._draw_bottom_bar(img)
@@ -101,24 +104,25 @@ class UiDrawer:
       self._draw_speed_bar(img, max_speed, lb, rb, wheel_fl, wheel_fr, motor_limit)
       self._draw_instruments(img, instruments)
 
-      gauge_cy = self.height // 2 + 8
-      radius = min(68, (self.width - 120) // 4)
-      bar_h = radius * 2 + 6
-      bar_y = gauge_cy - bar_h // 2
-      left_cx = self.width // 4 + 4
-      right_cx = self.width - self.width // 4 - 4
+      if not ball_follow_on:
+        gauge_cy = self.height // 2 + 8
+        radius = min(68, (self.width - 120) // 4)
+        bar_h = radius * 2 + 6
+        bar_y = gauge_cy - bar_h // 2
+        left_cx = self.width // 4 + 4
+        right_cx = self.width - self.width // 4 - 4
 
-      self._draw_gauge(img, left_cx, gauge_cy, state.left_x, state.left_y, radius=radius, label="L")
-      self._draw_gauge(img, right_cx, gauge_cy, state.right_x, state.right_y, radius=radius, label="R")
-      self._draw_trigger_bar(
-        img, 6, bar_y, 26, bar_h, state.lt, "LT", image.Color.from_rgb(60, 120, 220),
-      )
-      self._draw_trigger_bar(
-        img, self.width - 32, bar_y, 26, bar_h, state.rt, "RT",
-        image.Color.from_rgb(220, 100, 60),
-      )
-      self._draw_dpad(img, self.width // 2, gauge_cy + radius + 28, state.dpad_x, state.dpad_y)
-      self._draw_face_buttons(img, state)
+        self._draw_gauge(img, left_cx, gauge_cy, state.left_x, state.left_y, radius=radius, label="L")
+        self._draw_gauge(img, right_cx, gauge_cy, state.right_x, state.right_y, radius=radius, label="R")
+        self._draw_trigger_bar(
+          img, 6, bar_y, 26, bar_h, state.lt, "LT", image.Color.from_rgb(60, 120, 220),
+        )
+        self._draw_trigger_bar(
+          img, self.width - 32, bar_y, 26, bar_h, state.rt, "RT",
+          image.Color.from_rgb(220, 100, 60),
+        )
+        self._draw_dpad(img, self.width // 2, gauge_cy + radius + 28, state.dpad_x, state.dpad_y)
+        self._draw_face_buttons(img, state)
     elif busy:
       self._draw_bottom_bar(img)
       self._draw_progress(img, status, progress)

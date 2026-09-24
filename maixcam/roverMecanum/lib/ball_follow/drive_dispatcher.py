@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from lib.ball_follow.ball_follow_controller import BallFollowController
+from lib.input.drive_output import DriveOutput
 from lib.motion.encoder_counts import EncoderCounts
 from lib.motion.encoder_odometry import EncoderOdometry
 from lib.motion.rover_motion_client import RoverMotionClient
@@ -30,7 +31,7 @@ class DriveDispatcher:
     self._get_encoders = get_encoders
     self._prev_encoders: EncoderCounts | None = None
 
-  def dispatch(self, drive, manual_resume_pending: bool) -> bool:
+  def dispatch(self, drive: DriveOutput, manual_resume_pending: bool) -> bool:
     """Apply one teleop tick; return updated ``manual_resume_pending``."""
     if self._ball_follow.enabled:
       frame = self._get_frame()

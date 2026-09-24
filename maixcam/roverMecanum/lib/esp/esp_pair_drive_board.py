@@ -19,13 +19,15 @@ class EspPairDriveBoard:
   ) -> None:
     self._set_drive = set_drive
     self._limit = max(1, max_setpoint)
-    self._last: tuple[int, int] | None = None
+    self._last_left: int | None = None
+    self._last_right: int | None = None
     self._stop_bursts = 0
 
   def initialize(self, settle_s: float = 0.0) -> None:
     """No local init — ESP INIT is available from the DBG panel."""
     del settle_s
-    self._last = None
+    self._last_left = None
+    self._last_right = None
     self._stop_bursts = 0
 
   def set_pair(self, left: int, right: int) -> None:
@@ -33,23 +35,26 @@ class EspPairDriveBoard:
     fl = self._clamp(left)
     fr = self._clamp(right)
     if fl == 0 and fr == 0:
-      if self._last != (0, 0):
+      if self._last_left != 0 or self._last_right != 0:
         self._stop_bursts = self.STOP_BURSTS
         self._set_drive(0, 0)
-        self._last = (0, 0)
+        self._last_left = 0
+        self._last_right = 0
       elif self._stop_bursts > 0:
         self._set_drive(0, 0)
         self._stop_bursts -= 1
       return
     self._stop_bursts = 0
-    if self._last == (fl, fr):
+    if self._last_left == fl and self._last_right == fr:
       return
     self._set_drive(fl, fr)
-    self._last = (fl, fr)
+    self._last_left = fl
+    self._last_right = fr
 
   def stop(self) -> None:
     """STOP both motors on this board."""
-    self._last = None
+    self._last_left = None
+    self._last_right = None
     self._stop_bursts = self.STOP_BURSTS
     self.set_pair(0, 0)
 

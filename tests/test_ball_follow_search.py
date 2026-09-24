@@ -8,6 +8,12 @@ from lib.ball_follow.ball_observation import BallObservation
 def _settings(**overrides):
   raw = {
     "ball_follow": {
+      "color": "green",
+      "color_order": ["green", "red"],
+      "colors": {
+        "green": [[40, 90, -90, -40, 25, 75]],
+        "red": [[0, 80, 40, 80, 10, 80]],
+      },
       "search_turn_deg": 360,
       "search_turn_ms": 500,
       "lost_search_ms": 500,

@@ -38,23 +38,35 @@ def test_one_top_level_class_per_file() -> None:
   assert not violations, "1 class = 1 file:\n  " + "\n  ".join(violations)
 
 
-def test_no_tuple_return_annotations() -> None:
-  """Public callables must not annotate returns as tuple[...] (use a dataclass)."""
+def test_no_tuple_annotations() -> None:
+  """Forbid tuple[...] / Tuple[...] in public returns and dataclass fields."""
   violations = []
   for path in _iter_lib_py():
     with open(path, encoding="utf-8") as handle:
       tree = ast.parse(handle.read(), filename=path)
     for node in ast.walk(tree):
-      if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-        continue
-      if node.name.startswith("_"):
-        continue
-      if node.returns is None:
-        continue
-      text = ast.unparse(node.returns)
-      if text.startswith("tuple[") or text.startswith("Tuple["):
-        violations.append(f"{os.path.basename(path)}:{node.lineno} {node.name} -> {text}")
-  assert not violations, "no tuple returns:\n  " + "\n  ".join(violations)
+      if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        if node.name.startswith("_"):
+          continue
+        if node.returns is not None:
+          text = ast.unparse(node.returns)
+          if "tuple[" in text or "Tuple[" in text:
+            violations.append(
+              f"{os.path.basename(path)}:{node.lineno} {node.name} -> {text}"
+            )
+      if isinstance(node, ast.AnnAssign) and node.annotation is not None:
+        text = ast.unparse(node.annotation)
+        if "tuple[" in text or "Tuple[" in text:
+          target = ast.unparse(node.target) if node.target else "?"
+          violations.append(
+            f"{os.path.basename(path)}:{node.lineno} field {target}: {text}"
+          )
+  assert not violations, "no tuple DTOs:\n  " + "\n  ".join(violations)
+
+
+def test_no_tuple_return_annotations() -> None:
+  """Alias kept for older callers — delegates to test_no_tuple_annotations."""
+  test_no_tuple_annotations()
 
 
 def test_no_dict_list_return_annotations() -> None:
@@ -68,8 +80,10 @@ def test_no_dict_list_return_annotations() -> None:
     ("peripheral_checklist.py", "log_lines"),
     ("config_parse_helpers.py", "section"),
     ("config_parse_helpers.py", "as_str_list"),
-    ("ball_follow_settings.py", "thresholds"),
     ("ball_follow_settings.py", "thresholds_for"),
+    ("ball_color_preset.py", "maix_thresholds"),
+    ("lab_threshold.py", "as_maix_row"),
+    ("lab_threshold_set.py", "maix_rows"),
   }
   violations = []
   for path in _iter_lib_py():
@@ -154,7 +168,7 @@ def test_shipped_drive_backend_valid() -> None:
 
 def main() -> None:
   test_one_top_level_class_per_file()
-  test_no_tuple_return_annotations()
+  test_no_tuple_annotations()
   test_no_dict_list_return_annotations()
   test_no_getattr_setattr()
   test_no_silent_except_pass()

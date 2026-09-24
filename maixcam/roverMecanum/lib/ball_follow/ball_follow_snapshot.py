@@ -14,12 +14,12 @@ class BallFollowSnapshot:
   enabled: bool
   color: str
   observation: Optional[BallObservation]
-  trajectory: list
+  trajectory: list[BallObservation]
   command: BallFollowCommand
 
   @property
   def mode_label(self) -> str:
     """Return the short HUD label for the active control mode."""
     if not self.enabled:
-      return "MANUAL"
-    return f"BALL {self.color.upper()}"
+      return "MODE MANUAL"
+    return f"FOLLOW {self.color.upper()}"

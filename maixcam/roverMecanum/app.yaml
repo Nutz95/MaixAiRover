@@ -7,11 +7,31 @@ desc: >-
   Mecanum rover with Xbox BLE on MaixCAM2. Drive backends: Yahboom USB
   closed-loop (default) or Waveshare ESP UART.
 files:
+  - lib\app\__init__.py
+  - lib\app\drive_stack_handles.py
+  - lib\app\drive_stack_loader.py
+  - lib\app\teleop_tick_handler.py
+  - lib\ball_follow\__init__.py
+  - lib\ball_follow\ball_color_preset.py
+  - lib\ball_follow\ball_detector.py
+  - lib\ball_follow\ball_follow_command.py
+  - lib\ball_follow\ball_follow_controller.py
+  - lib\ball_follow\ball_follow_hud.py
+  - lib\ball_follow\ball_follow_policy.py
+  - lib\ball_follow\ball_follow_runtime.py
+  - lib\ball_follow\ball_follow_settings.py
+  - lib\ball_follow\ball_follow_snapshot.py
+  - lib\ball_follow\ball_observation.py
+  - lib\ball_follow\color_name_cycle.py
+  - lib\ball_follow\drive_dispatcher.py
+  - lib\ball_follow\lab_threshold_set.py
+  - lib\ball_follow\lab_threshold.py
   - lib\camera\__init__.py
   - lib\camera\camera_config.py
   - lib\camera\camera_preview_service.py
   - lib\config\__init__.py
   - lib\config\battery_reading.py
+  - lib\config\config_parse_helpers.py
   - lib\config\config_store.py
   - lib\config\motor_config.py
   - lib\config\paths.py
@@ -46,12 +66,15 @@ files:
   - lib\i2c\maix_i2c_bus.py
   - lib\i2c\stub_i2c_bus.py
   - lib\input\__init__.py
+  - lib\input\abs_info.py
+  - lib\input\abs_range.py
   - lib\input\axis_curve.py
   - lib\input\axis_pair.py
   - lib\input\axis_source.py
   - lib\input\bluetooth_command_result.py
   - lib\input\bluetooth_installer.py
   - lib\input\bluetooth_pairing_service.py
+  - lib\input\bluetooth_scan_match.py
   - lib\input\bluetoothctl_runner.py
   - lib\input\bluetoothctl_session.py
   - lib\input\controller_button.py
@@ -100,12 +123,21 @@ files:
   - lib\ui\__init__.py
   - lib\ui\checklist_panel.py
   - lib\ui\debug_panel.py
+  - lib\ui\hud_composer.py
   - lib\ui\hud_instruments.py
+  - lib\ui\overlay_session.py
+  - lib\ui\overlay_touch_router.py
   - lib\ui\pitch_roll_deg.py
   - lib\ui\touch_point.py
   - lib\ui\ui_drawer.py
   - lib\ui\ui_rect.py
   - lib\ui\yahboom_debug_panel.py
+  - lib\vision\__init__.py
+  - lib\vision\ball_depth_band.py
+  - lib\vision\depth_fusion_hud.py
+  - lib\vision\depth_infer_result.py
+  - lib\vision\depth_infer_worker.py
+  - lib\vision\depth_view_mode.py
   - lib\yahboom\__init__.py
   - lib\yahboom\ch340_usb_serial.py
   - lib\yahboom\maix_battery_reader.py

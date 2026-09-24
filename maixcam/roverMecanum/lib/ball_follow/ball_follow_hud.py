@@ -1,8 +1,13 @@
-"""Ball-follow mode badge, bbox, and trajectory HUD."""
+"""Ball-follow mode LED, bbox, and trajectory HUD."""
 
 from maix import image
 
 from lib.ball_follow.ball_follow_snapshot import BallFollowSnapshot
+
+# Below the top-left exit pad (8,8,44×44) so the LED never covers the hit target.
+_LED_X = 30
+_LED_Y = 74
+_LED_R = 14
 
 
 class BallFollowHud:
@@ -14,8 +19,8 @@ class BallFollowHud:
     self.height = height
 
   def draw(self, img, ball_snapshot: BallFollowSnapshot) -> None:
-    """Draw mode badge, blob box, trajectory, and policy reason."""
-    self._draw_status(img, ball_snapshot)
+    """Draw mode LED, blob box, and trajectory (no hard-to-read text badge)."""
+    self._draw_mode_led(img, ball_snapshot)
     if not ball_snapshot.enabled:
       return
     self._draw_trajectory(img, ball_snapshot)
@@ -26,9 +31,6 @@ class BallFollowHud:
       else image.Color.from_rgb(80, 220, 80)
     )
     if observation is None:
-      img.draw_string(
-        8, 80, f"BALL {ball_snapshot.command.reason}", box_color, scale=1.1,
-      )
       return
     scale_x = img.width() / max(1, observation.image_width)
     scale_y = img.height() / max(1, observation.image_height)
@@ -44,24 +46,23 @@ class BallFollowHud:
       image.Color.from_rgb(255, 255, 255),
       thickness=-1,
     )
-    img.draw_string(
-      8, 80, f"BALL {ball_snapshot.command.reason}", box_color, scale=1.1,
-    )
 
-  def _draw_status(self, img, ball_snapshot: BallFollowSnapshot) -> None:
-    label = ball_snapshot.mode_label
+  def _draw_mode_led(self, img, ball_snapshot: BallFollowSnapshot) -> None:
+    """Colour LED: grey=manual, green/red=follow that colour."""
     if not ball_snapshot.enabled:
-      background = image.Color.from_rgb(70, 70, 70)
+      fill = image.Color.from_rgb(70, 70, 70)
     elif ball_snapshot.color == "red":
-      background = image.Color.from_rgb(160, 40, 40)
+      fill = image.Color.from_rgb(230, 40, 40)
     else:
-      background = image.Color.from_rgb(20, 120, 60)
-    size = image.string_size(label, scale=1.4, thickness=2)
-    x = 60
-    y = 8
-    img.draw_rect(x, y, size.width() + 16, size.height() + 12, background, thickness=-1)
-    img.draw_rect(x, y, size.width() + 16, size.height() + 12, image.COLOR_WHITE, thickness=2)
-    img.draw_string(x + 8, y + 6, label, image.COLOR_WHITE, scale=1.4, thickness=2)
+      fill = image.Color.from_rgb(40, 220, 70)
+    img.draw_circle(_LED_X, _LED_Y, _LED_R, fill, thickness=-1)
+    img.draw_circle(_LED_X, _LED_Y, _LED_R, image.COLOR_WHITE, thickness=2)
+    if ball_snapshot.enabled:
+      # Bright core — reads as an “on” LED even on turbo depth.
+      img.draw_circle(
+        _LED_X - 3, _LED_Y - 3, 4,
+        image.Color.from_rgb(255, 255, 255), thickness=-1,
+      )
 
   def _draw_trajectory(self, img, ball_snapshot: BallFollowSnapshot) -> None:
     previous_x = None

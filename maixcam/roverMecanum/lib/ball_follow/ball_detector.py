@@ -24,7 +24,9 @@ class BallDetector:
       return None
     image_width = frame.width()
     image_height = frame.height()
-    active_thresholds = thresholds or self._settings.thresholds
+    active_thresholds = thresholds or self._settings.thresholds_for(
+      self._settings.default_color,
+    )
     blobs = frame.find_blobs(
       active_thresholds,
       area_threshold=self._settings.area_threshold,

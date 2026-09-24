@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from lib.ball_follow.ball_follow_controller import BallFollowController
 from lib.ball_follow.ball_follow_settings import BallFollowSettings
+from lib.ball_follow.ball_follow_snapshot import BallFollowSnapshot
 from lib.ball_follow.drive_dispatcher import DriveDispatcher
 from lib.config.motor_config import MotorConfig
+from lib.input.drive_output import DriveOutput
 from lib.motion.encoder_odometry import EncoderOdometry
 from lib.motion.rover_motion_client import RoverMotionClient
 from lib.vision.depth_fusion_hud import DepthFusionHud
@@ -72,19 +74,28 @@ class BallFollowRuntime:
     """Force manual mode (shutdown path)."""
     self.controller.set_enabled(False)
 
-  def dispatch(self, drive) -> None:
+  def dispatch(self, drive: DriveOutput) -> None:
     """Apply one teleop tick through the ball/manual arbitrator."""
     self.manual_resume_pending = self._drive.dispatch(
       drive, self.manual_resume_pending,
     )
 
-  def snapshot(self):
+  def snapshot(self) -> BallFollowSnapshot:
     """Return the HUD snapshot for overlays."""
     return self.controller.snapshot()
 
   def draw_depth(self, frame) -> None:
-    """Optional DepthAnything fusion (visual only)."""
-    self.depth_hud.draw(frame, self.controller.snapshot())
+    """Paint depth HUD only — never gates ball detect/track/drive.
+
+    Ball position + follow run on the teleop tick (``dispatch`` → detector).
+    Depth busy means the last distance band stays stale; tracking continues.
+    """
+    try:
+      self.depth_hud.draw(frame, self.controller.snapshot())
+    except MemoryError as oom:
+      print(f"ball: depth draw OOM (ignored): {oom}")
+    except Exception as depth_error:
+      print(f"ball: depth draw: {depth_error}")
 
   def _frame(self):
     if self._get_frame is None:

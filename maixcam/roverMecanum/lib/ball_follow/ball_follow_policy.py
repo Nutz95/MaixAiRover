@@ -68,24 +68,10 @@ class BallFollowPolicy:
     self._last_seen_ms = observation.timestamp_ms
 
     horizontal_error = observation.x_ratio - self._settings.image_center_x_ratio
-    if abs(horizontal_error) > self._settings.horizontal_deadzone:
-      damped = (
-        horizontal_error * self._settings.spin_gain
-        + self._velocity_x * self._settings.spin_damping
-      )
-      spin_floor, spin_max = self._progressive_limits(
-        self._settings.min_spin_axis,
-        self._settings.max_spin_axis,
-        abs(horizontal_error),
-        0.40,
-      )
-      spin = self._drive_axis(damped, spin_floor, spin_max)
-      return BallFollowCommand(
-        spin=self._settings.spin_axis_sign * spin,
-        reason="align",
-      )
-
     height = observation.height_ratio
+    if abs(horizontal_error) > self._settings.horizontal_deadzone:
+      return self._align_command(observation, horizontal_error, height)
+
     if (
       height >= self._settings.too_close_height_ratio
       or (
@@ -94,21 +80,7 @@ class BallFollowPolicy:
       )
     ):
       self._holding_distance = False
-      error = max(
-        self._settings.min_distance_error,
-        height - self._settings.target_height_ratio,
-      )
-      hard_floor = min(self._settings.min_forward_axis, self._settings.max_retreat_axis)
-      axis = self._distance_axis(
-        error,
-        hard_floor,
-        self._settings.max_retreat_axis,
-        max(0.08, self._settings.too_close_height_ratio - self._settings.target_height_ratio),
-      )
-      return BallFollowCommand(
-        forward=-self._settings.forward_axis_sign * axis,
-        reason="too_close",
-      )
+      return self._retreat_command(height)
 
     approach_limit = (
       self._settings.target_height_ratio - self._settings.target_tolerance_ratio
@@ -118,23 +90,104 @@ class BallFollowPolicy:
 
     if height < approach_limit:
       self._holding_distance = False
-      error = max(
-        self._settings.min_distance_error,
-        self._settings.target_height_ratio - height,
-      )
-      axis = self._distance_axis(
-        error,
-        self._settings.min_forward_axis,
-        self._settings.max_forward_axis,
-        max(0.08, self._settings.target_height_ratio),
-      )
-      return BallFollowCommand(
-        forward=self._settings.forward_axis_sign * axis,
-        reason="approach",
-      )
+      return self._approach_command(height)
 
     self._holding_distance = True
     return BallFollowCommand(reason="target_distance")
+
+  def _align_command(
+    self,
+    observation: BallObservation,
+    horizontal_error: float,
+    height: float,
+  ) -> BallFollowCommand:
+    """Spin to center; boost spin when the ball slides sideways fast.
+
+    When still far, creep forward while aligning so pursuit does not stall.
+    """
+    del observation
+    lead = self._lateral_spin_scale()
+    damped = (
+      horizontal_error * self._settings.spin_gain
+      + self._velocity_x * self._settings.spin_damping * lead
+    )
+    spin_floor, spin_max = self._progressive_limits(
+      self._settings.min_spin_axis,
+      self._settings.max_spin_axis,
+      abs(horizontal_error),
+      0.40,
+    )
+    spin_max = min(
+      self._settings.max_spin_axis,
+      max(spin_floor, int(spin_max * lead)),
+    )
+    spin = self._drive_axis(damped, spin_floor, spin_max)
+    forward = 0
+    approach_limit = (
+      self._settings.target_height_ratio - self._settings.target_tolerance_ratio
+    )
+    if height < approach_limit:
+      # Half-strength approach while correcting heading (far ball).
+      forward = self._settings.forward_axis_sign * (
+        self._approach_axis(height) // 2
+      )
+    return BallFollowCommand(
+      forward=forward,
+      spin=self._settings.spin_axis_sign * spin,
+      reason="align",
+    )
+
+  def _approach_command(self, height: float) -> BallFollowCommand:
+    """Drive forward harder when the blob is small (ball far)."""
+    return BallFollowCommand(
+      forward=self._settings.forward_axis_sign * self._approach_axis(height),
+      reason="approach",
+    )
+
+  def _retreat_command(self, height: float) -> BallFollowCommand:
+    """Back away gently when the blob is large (ball close)."""
+    return BallFollowCommand(
+      forward=-self._settings.forward_axis_sign * self._retreat_axis(height),
+      reason="too_close",
+    )
+
+  def _approach_axis(self, height: float) -> int:
+    error = max(
+      self._settings.min_distance_error,
+      self._settings.target_height_ratio - height,
+    )
+    # Ease-out: far errors ramp to max_forward quickly.
+    return self._distance_axis(
+      error,
+      self._settings.min_forward_axis,
+      self._settings.max_forward_axis,
+      max(0.08, self._settings.target_height_ratio),
+      curve=0.55,
+    )
+
+  def _retreat_axis(self, height: float) -> int:
+    error = max(
+      self._settings.min_distance_error,
+      height - self._settings.target_height_ratio,
+    )
+    # Ease-in: near overshoot → soft reverse; only hard when very close.
+    soft_max = max(
+      self._settings.min_forward_axis,
+      int(self._settings.max_retreat_axis * 0.65),
+    )
+    return self._distance_axis(
+      error,
+      max(1, self._settings.min_forward_axis // 2),
+      soft_max,
+      max(0.08, self._settings.too_close_height_ratio - self._settings.target_height_ratio),
+      curve=1.6,
+    )
+
+  def _lateral_spin_scale(self) -> float:
+    """1.0 idle → up to ~1.8 when lateral image velocity is high."""
+    threshold = max(0.05, self._settings.exit_velocity_threshold)
+    # ponytail: linear lead; upgrade = Kalman / constant-velocity predictor.
+    return 1.0 + min(0.8, abs(self._velocity_x) / (threshold * 4.0))
 
   def _update_velocity_x(self, observation: BallObservation) -> None:
     if self._last_observation is None:
@@ -294,12 +347,29 @@ class BallFollowPolicy:
     hard_floor: int,
     hard_max: int,
     full_error: float,
+    curve: float = 1.0,
   ) -> int:
-    """Progressive approach/retreat magnitude from a distance error."""
-    floor, ceiling = self._progressive_limits(hard_floor, hard_max, error, full_error)
+    """Progressive approach/retreat magnitude from a distance error.
+
+    ``curve < 1`` eases out (far → near-max sooner). ``curve > 1`` eases in
+    (soft near target, firm only when error is large).
+    """
+    if full_error <= 0:
+      t = 1.0
+    else:
+      t = max(0.0, min(1.0, abs(error) / full_error))
+    if curve != 1.0:
+      t = t ** curve
+    floor, ceiling = self._progressive_limits(hard_floor, hard_max, t, 1.0)
     if error < self._settings.target_tolerance_ratio * 2:
       floor = 1
-    return abs(self._drive_axis(error * self._settings.forward_gain, floor, ceiling))
+    gain_mag = abs(int(error * self._settings.forward_gain))
+    # Gain alone under-drives far approach; take the progressive envelope too.
+    prog_mag = int(floor + t * (ceiling - floor))
+    magnitude = max(gain_mag, prog_mag)
+    if magnitude <= 0:
+      return 0
+    return max(floor, min(ceiling, magnitude))
 
   @staticmethod
   def yaw_delta_deg(start_deg: float, now_deg: float) -> float:
@@ -312,8 +382,8 @@ class BallFollowPolicy:
     if max_axis <= min_axis:
       return min_axis, min_axis
     t = 1.0 if full_error <= 0 else max(0.0, min(1.0, abs(error) / full_error))
-    # ponytail: soft floor can sit under breakaway near target; upgrade = gyro kick probe.
-    floor = max(1, int(min_axis * (0.55 + 0.45 * t)))
+    # Encoded closed-loop: soft floor can be gentle (no open-loop deadband kick).
+    floor = max(1, int(min_axis * (0.25 + 0.75 * t)))
     ceiling = max(floor, int(min_axis + t * (max_axis - min_axis)))
     return floor, ceiling
 
