@@ -7,12 +7,12 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "maixcam", "roverMecanum"))
 
-from lib.dual_board_drive_port import DualBoardDrivePort
-from lib.encoder_pair import EncoderPair
-from lib.esp_link_config import EspLinkConfig
-from lib.esp_pair_drive_board import EspPairDriveBoard
-from lib.null_rear_drive_board import NullRearDriveBoard
-from lib.wheel_speeds import WheelSpeeds
+from lib.motion.dual_board_drive_port import DualBoardDrivePort
+from lib.motion.encoder_pair import EncoderPair
+from lib.esp.esp_link_config import EspLinkConfig
+from lib.esp.esp_pair_drive_board import EspPairDriveBoard
+from lib.motion.null_rear_drive_board import NullRearDriveBoard
+from lib.motion.wheel_speeds import WheelSpeeds
 
 
 class _FakeFront:

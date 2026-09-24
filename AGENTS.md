@@ -40,6 +40,16 @@ These override ponytail “fewest files” when they conflict. Ponytail still ap
 
 Shipable MaixApp lives in `maixcam/roverMecanum/` (`main.py` + `app.yaml` + icons + `lib/`).
 
+`lib/` is split by domain (not a flat dump):
+
+- `ui/` — HUD, checklist, debug panels, touch
+- `yahboom/` — Rosmaster USB closed-loop + CH340
+- `esp/` — Waveshare UART/USB debug + TELEM
+- `input/` — Xbox BLE/evdev + stick mapping
+- `motion/` — mixer, drive stack, chassis ports
+- `camera/`, `i2c/`, `health/`, `config/`
+- `xbox_rover_app.py` stays at `lib/` root (app entry)
+
 ## Docs
 
 Update `docs/` when architecture, wiring, controls, or flash flow change.

@@ -5,8 +5,8 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "maixcam", "roverMecanum"))
 
-from lib.drive_command import DriveCommand
-from lib.mecanum_mixer import MecanumMixer
+from lib.motion.drive_command import DriveCommand
+from lib.motion.mecanum_mixer import MecanumMixer
 
 
 def test_idle_command_yields_zero_wheels():

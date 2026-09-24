@@ -5,7 +5,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "maixcam", "roverMecanum"))
 
-from lib.bluetoothctl_runner import BluetoothctlRunner
+from lib.input.bluetoothctl_runner import BluetoothctlRunner
 
 
 SAMPLE = """

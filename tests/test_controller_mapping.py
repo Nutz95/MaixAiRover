@@ -5,10 +5,10 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "maixcam", "roverMecanum"))
 
-from lib.controller_button import ControllerButton
-from lib.controller_mapping_engine import ControllerMappingEngine
-from lib.controller_state import ControllerState
-from lib.drive_action import DriveAction
+from lib.input.controller_button import ControllerButton
+from lib.input.controller_mapping_engine import ControllerMappingEngine
+from lib.input.controller_state import ControllerState
+from lib.input.drive_action import DriveAction
 
 
 def _config():

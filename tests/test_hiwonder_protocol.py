@@ -5,12 +5,12 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "maixcam", "roverMecanum"))
 
-from lib.hiwonder_motor_driver import HiwonderMotorDriver
-from lib.hiwonder_registers import HiwonderRegisters
-from lib.motion_stack_factory import MotionStackFactory
-from lib.motor_config import MotorConfig
-from lib.stub_i2c_bus import StubI2cBus
-from lib.wheel_speeds import WheelSpeeds
+from lib.motion.hiwonder_motor_driver import HiwonderMotorDriver
+from lib.motion.hiwonder_registers import HiwonderRegisters
+from lib.motion.motion_stack_factory import MotionStackFactory
+from lib.config.motor_config import MotorConfig
+from lib.i2c.stub_i2c_bus import StubI2cBus
+from lib.motion.wheel_speeds import WheelSpeeds
 
 
 def test_stub_scan_finds_default_address():

@@ -4,30 +4,40 @@ import threading
 
 from maix import app, display, image, time, touchscreen
 
-from lib.bluetooth_installer import BluetoothInstaller
-from lib.camera_config import CameraConfig
-from lib.camera_preview_service import CameraPreviewService
-from lib.checklist_panel import ChecklistPanel
-from lib.config_store import ConfigStore
-from lib.debug_panel import DebugPanel
-from lib.drive_backend_config import DriveBackendConfig
-from lib.drive_backend_kind import DriveBackendKind
-from lib.esp_debug_action import EspDebugAction
-from lib.esp_debug_session import EspDebugSession
-from lib.esp_link_config import EspLinkConfig
-from lib.hud_instruments import from_telem, from_yahboom_imu
-from lib.motion_stack_factory import MotionStackFactory
-from lib.motor_config import MotorConfig
-from lib.peripheral_health_checker import PeripheralHealthChecker
-from lib.rover_config import RoverConfig
-from lib.teleop_control_thread import TeleopControlThread
-from lib.touch_point import TouchPoint
-from lib.ui_drawer import UiDrawer
-from lib.xbox_input_service import XboxInputService
+from lib.input.bluetooth_installer import BluetoothInstaller
+from lib.camera.camera_config import CameraConfig
+from lib.camera.camera_preview_service import CameraPreviewService
+from lib.ui.checklist_panel import ChecklistPanel
+from lib.config.config_store import ConfigStore
+from lib.ui.debug_panel import DebugPanel
+from lib.motion.drive_backend_config import DriveBackendConfig
+from lib.motion.drive_backend_kind import DriveBackendKind
+from lib.esp.esp_debug_action import EspDebugAction
+from lib.esp.esp_debug_session import EspDebugSession
+from lib.esp.esp_link_config import EspLinkConfig
+from lib.ui.hud_instruments import from_telem, from_yahboom
+from lib.yahboom.maix_battery_reader import MaixBatteryReader
+from lib.motion.motion_stack_factory import MotionStackFactory
+from lib.config.motor_config import MotorConfig
+from lib.health.peripheral_health_checker import PeripheralHealthChecker
+from lib.config.rover_config import RoverConfig
+from lib.input.teleop_control_thread import TeleopControlThread
+from lib.ui.touch_point import TouchPoint
+from lib.ui.ui_drawer import UiDrawer
+from lib.input.xbox_input_service import XboxInputService
+from lib.yahboom.yahboom_debug_action import YahboomDebugAction
+from lib.ui.yahboom_debug_panel import YahboomDebugPanel
+from lib.yahboom.yahboom_debug_session import YahboomDebugSession
 
 
 class XboxRoverApp:
-  """Xbox teleop app with HUD, checklist, and ESP debug panel."""
+  """Xbox teleop + camera HUD.
+
+  Threads (Keyestudio pattern):
+  - teleop-ctrl: sticks + Yahboom/ESP drive (USB stays off the HUD path)
+  - cam-preview: capture latest frame
+  - main: touch + HUD draw + display.show (Maix display API)
+  """
 
   TOUCH_DEBOUNCE_MS = 900
   SPEED_DEBOUNCE_MS = 160
@@ -49,14 +59,20 @@ class XboxRoverApp:
     self._ui = UiDrawer(self._disp.width(), self._disp.height())
     self._checklist_panel = ChecklistPanel(self._disp.width(), self._disp.height())
     self._debug_panel = DebugPanel(self._disp.width(), self._disp.height())
+    self._yahboom_debug_panel = YahboomDebugPanel(
+      self._disp.width(), self._disp.height(),
+    )
     self._esp_links = esp_links
     self._debug = None
     self._rear_debug = None
     self._yahboom_board = None
+    self._yahboom_debug = None
+    self._maix_battery = MaixBatteryReader()
     if self._drive_backend is DriveBackendKind.YAHBOOM:
       bundle = MotionStackFactory().create_yahboom(self._config)
       self._rover = bundle.client
       self._yahboom_board = bundle.yahboom_board
+      self._yahboom_debug = YahboomDebugSession(self._yahboom_board)
       print("drive_backend: yahboom (USB Rosmaster closed-loop)")
     else:
       self._debug = EspDebugSession(uart_port=esp_links.front.uart_port)
@@ -92,11 +108,16 @@ class XboxRoverApp:
     self._checklist = None
     self._checklist_open = False
     self._checklist_lock = threading.Lock()
+    self._hud_lock = threading.Lock()
+    self._hud_instruments_cache = from_telem(None)
+    self._maix_battery_pct = None
+    self._last_hud_sensor_ms = 0
     self._health = PeripheralHealthChecker(
       esp_wifi_host=esp_links.front.wifi_host,
       esp_wifi_port=esp_links.front.wifi_port,
       esp_uart_port=esp_links.front.uart_port,
       rear_uart_port=(esp_links.rear.uart_port if esp_links.rear else ""),
+      drive_backend=self._drive_backend,
     )
     self._cam_cfg = cam_cfg
     self._display_fps = display_fps
@@ -109,22 +130,24 @@ class XboxRoverApp:
     )
 
   def run(self) -> None:
-    """Start HUD + control threads; main thread only handles touch/UI."""
+    """Teleop in background; main thread draws HUD (Maix display API)."""
     self._start_camera()
-    display_thread = threading.Thread(
-      target=self._display_loop, daemon=True, name="hud-display",
-    )
-    display_thread.start()
     self._control.start()
+    loop_sleep_ms = max(1, min(8, self._display_interval_ms // 2))
+    last_draw = 0
     try:
       while not app.need_exit() and not self._exit.is_set():
         self._read_touch()
         self._handle_touch()
         self._on_connection_change()
-        time.sleep_ms(8)
+        now = time.ticks_ms()
+        if now - last_draw >= self._display_interval_ms:
+          self._draw_frame()
+          last_draw = time.ticks_ms()
+        else:
+          time.sleep_ms(loop_sleep_ms)
     finally:
       self.shutdown()
-      display_thread.join(timeout=1.0)
 
   def shutdown(self) -> None:
     """Stop input, motors, and camera once."""
@@ -152,10 +175,33 @@ class XboxRoverApp:
       self._camera = None
 
   def _control_tick(self) -> None:
-    """Light work on the control thread (config reload + LB/RB speed)."""
+    """Light work on the control thread (config reload + LB/RB + sensor cache)."""
     self._apply_rover_config()
     self._handle_speed_bumpers()
-    self._control.set_send_interval_ms(self._send_interval)
+    self._refresh_hud_sensors()
+
+  def _refresh_hud_sensors(self) -> None:
+    """Pump Yahboom RX + cache HUD instruments (never called from draw)."""
+    now = time.ticks_ms()
+    # Battery sysfs + USB parse ~4 Hz is enough for gauges.
+    if now - self._last_hud_sensor_ms < 250:
+      return
+    self._last_hud_sensor_ms = now
+    maix_pct = self._maix_battery.percent()
+    if self._yahboom_board is not None:
+      self._yahboom_board.poll()
+      instruments = from_yahboom(
+        self._yahboom_board.imu_attitude(),
+        self._yahboom_board.battery(),
+        maix_pct=maix_pct,
+      )
+    elif self._debug is not None:
+      instruments = from_telem(self._debug.telem(), maix_pct=maix_pct)
+    else:
+      instruments = from_telem(None, maix_pct=maix_pct)
+    with self._hud_lock:
+      self._maix_battery_pct = maix_pct
+      self._hud_instruments_cache = instruments
 
   def _apply_rover_config(self) -> None:
     """Hot-reload rover tuning; reset session speed if file max_speed changes."""
@@ -194,17 +240,6 @@ class XboxRoverApp:
         f" ({self._session_max_speed}/255)"
       )
 
-  def _display_loop(self) -> None:
-    last_draw = 0
-    while not app.need_exit() and not self._exit.is_set():
-      now = time.ticks_ms()
-      wait = self._display_interval_ms - (now - last_draw)
-      if wait > 1:
-        time.sleep_ms(wait)
-        continue
-      self._draw_frame()
-      last_draw = time.ticks_ms()
-
   def _start_camera(self) -> None:
     cam_cfg = self._cam_cfg
     if not cam_cfg.enabled:
@@ -234,9 +269,14 @@ class XboxRoverApp:
     debug_link = ""
     debug_status = ""
     debug_telem = None
-    if self._debug is not None:
+    yahboom_snap = None
+    # Never poll USB here: only snapshot when a DBG panel is already open.
+    if self._yahboom_debug is not None and self._yahboom_debug.is_open():
+      yahboom_snap = self._yahboom_debug.snapshot()
+      debug_open = True
+    elif self._debug is not None and self._debug.is_open():
       snap_dbg = self._debug.snapshot()
-      debug_open = snap_dbg.panel_open
+      debug_open = True
       debug_link = snap_dbg.link_name
       debug_status = snap_dbg.status
       debug_telem = snap_dbg.telem
@@ -249,9 +289,12 @@ class XboxRoverApp:
 
     if debug_open:
       frame = image.Image(self._disp.width(), self._disp.height(), bg=image.COLOR_BLACK)
-      self._debug_panel.draw(
-        frame, link_name=debug_link, status=debug_status, telem=debug_telem,
-      )
+      if yahboom_snap is not None:
+        self._yahboom_debug_panel.draw(frame, yahboom_snap)
+      else:
+        self._debug_panel.draw(
+          frame, link_name=debug_link, status=debug_status, telem=debug_telem,
+        )
       self._disp.show(frame)
       return
 
@@ -261,7 +304,6 @@ class XboxRoverApp:
     if frame is None:
       frame = image.Image(self._disp.width(), self._disp.height(), bg=image.COLOR_BLACK)
     else:
-      # MaixPy draw_* rejects YUV (config default yuv420); HUD needs RGB.
       frame = self._drawable_rgb(frame)
     snap = self._xbox.snapshot()
     wheels = self._rover.last_wheel_speeds()
@@ -282,12 +324,9 @@ class XboxRoverApp:
     self._disp.show(frame)
 
   def _hud_instruments(self):
-    """HUD instruments from ESP TELEM or Yahboom IMU."""
-    if self._yahboom_board is not None:
-      return from_yahboom_imu(self._yahboom_board.imu_attitude())
-    if self._debug is not None:
-      return from_telem(self._debug.telem())
-    return from_telem(None)
+    """Cached instruments filled by the teleop thread (no USB on draw path)."""
+    with self._hud_lock:
+      return self._hud_instruments_cache
 
   @staticmethod
   def _drawable_rgb(frame):
@@ -356,11 +395,20 @@ class XboxRoverApp:
         self._debug.start_link()
       if self._rear_debug is not None:
         self._rear_debug.start_link()
-    debug_open = self._debug is not None and self._debug.is_open()
+    debug_open = (
+      (self._yahboom_debug is not None and self._yahboom_debug.is_open())
+      or (self._debug is not None and self._debug.is_open())
+    )
     if self._camera is not None and not debug_open:
       self._camera.set_paused(False)
 
   def _open_debug(self) -> None:
+    if self._yahboom_debug is not None:
+      if self._camera is not None:
+        self._camera.set_paused(True)
+      self._yahboom_debug.open()
+      self._arm_touch_ignore()
+      return
     if self._debug is None:
       return
     if self._camera is not None:
@@ -369,21 +417,25 @@ class XboxRoverApp:
     self._arm_touch_ignore()
 
   def _close_debug(self) -> None:
-    if self._debug is None:
-      return
-    was_open = self._debug.is_open()
-    self._debug.close()
+    was_open = False
+    if self._yahboom_debug is not None and self._yahboom_debug.is_open():
+      self._yahboom_debug.close()
+      was_open = True
+    elif self._debug is not None and self._debug.is_open():
+      self._debug.close()
+      was_open = True
     if was_open:
       self._arm_touch_ignore()
     if was_open and self._camera is not None and not self._checklist_open:
       self._camera.set_paused(False)
 
   def _run_peripheral_checklist(self) -> None:
-    """Probe ESP / motors after pad connect; fill the opaque checklist panel."""
+    """Probe Yahboom or ESP after pad connect; fill the opaque checklist panel."""
     report = self._health.run(
       xbox_connected=True,
       camera_ok=self._camera is not None,
       motion_is_stub=self._rover.is_stub(),
+      yahboom_board=self._yahboom_board,
     )
     print("peripheral checklist:")
     for line in report.log_lines():
@@ -415,13 +467,30 @@ class XboxRoverApp:
     with self._checklist_lock:
       checklist_open = self._checklist_open
       checklist_ready = self._checklist is not None
-    debug_open = self._debug is not None and self._debug.is_open()
+    debug_open = (
+      (self._yahboom_debug is not None and self._yahboom_debug.is_open())
+      or (self._debug is not None and self._debug.is_open())
+    )
 
     if checklist_open:
       if checklist_ready and self._checklist_panel.ok_rect().contains(action.x, action.y):
         self._close_checklist()
       elif self._ui.back_rect().contains(action.x, action.y):
         self._request_exit()
+      return
+
+    if debug_open and self._yahboom_debug is not None:
+      panel = self._yahboom_debug_panel
+      if panel.close_rect().contains(action.x, action.y):
+        self._close_debug()
+      elif panel.poll_rect().contains(action.x, action.y):
+        self._yahboom_debug.run_action(YahboomDebugAction.POLL)
+      elif panel.stop_rect().contains(action.x, action.y):
+        self._yahboom_debug.run_action(YahboomDebugAction.STOP)
+      elif panel.fwd_rect().contains(action.x, action.y):
+        self._yahboom_debug.run_action(YahboomDebugAction.FWD)
+      elif panel.init_rect().contains(action.x, action.y):
+        self._yahboom_debug.run_action(YahboomDebugAction.INIT)
       return
 
     if debug_open and self._debug is not None:
@@ -463,6 +532,8 @@ class XboxRoverApp:
         return
     if self._debug is not None and self._debug.is_open():
       return
+    if self._yahboom_debug is not None and self._yahboom_debug.is_open():
+      return
     try:
       if drive.preset_action is not None:
         self._rover.send_preset(drive.preset_action)
@@ -477,4 +548,4 @@ class XboxRoverApp:
         drive.axis_pivot,
       )
     except Exception as exc:
-      print(f"drive: {exc}")
+      print(f"drive: {type(exc).__name__}: {exc}")

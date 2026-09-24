@@ -8,7 +8,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "maixcam", "roverMecanum"))
 
-from lib.esp_binary_protocol import (
+from lib.esp.esp_binary_protocol import (
   CMD_PING,
   CMD_SPEED,
   CMD_TELEM,
@@ -21,7 +21,7 @@ from lib.esp_binary_protocol import (
   encode_frame,
   try_parse_frame,
 )
-from lib.telem_snapshot import TelemSnapshot
+from lib.esp.telem_snapshot import TelemSnapshot
 
 
 def test_ping_roundtrip() -> None:

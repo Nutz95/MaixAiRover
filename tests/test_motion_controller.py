@@ -5,13 +5,13 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "maixcam", "roverMecanum"))
 
-from lib.drive_command import DriveCommand
-from lib.encoder_odometry import EncoderOdometry
-from lib.hiwonder_motor_driver import HiwonderMotorDriver
-from lib.mecanum_mixer import MecanumMixer
-from lib.motion_controller import MotionController
-from lib.motor_config import MotorConfig
-from lib.stub_i2c_bus import StubI2cBus
+from lib.motion.drive_command import DriveCommand
+from lib.motion.encoder_odometry import EncoderOdometry
+from lib.motion.hiwonder_motor_driver import HiwonderMotorDriver
+from lib.motion.mecanum_mixer import MecanumMixer
+from lib.motion.motion_controller import MotionController
+from lib.config.motor_config import MotorConfig
+from lib.i2c.stub_i2c_bus import StubI2cBus
 
 
 def _controller() -> MotionController:

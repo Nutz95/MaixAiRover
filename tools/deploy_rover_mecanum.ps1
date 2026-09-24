@@ -163,11 +163,15 @@ function Deploy-Package {
         throw "Passwordless SSH required. Re-run without -DeployOnly."
     }
     Write-Step "Creating $RemotePath on $($script:Target)"
-    $exitCode = Invoke-Ssh "mkdir -p '$RemotePath/lib'"
+    $exitCode = Invoke-Ssh "mkdir -p '$RemotePath'"
     if ($exitCode -ne 0) { throw "Remote mkdir failed" }
     if (-not (Test-Path "$LocalPackage\lib")) {
         throw "Local lib/ not found: $LocalPackage\lib"
     }
+    # Replace remote lib wholly — scp -r merges and leaves stale flat modules.
+    Write-Step "Replacing $RemotePath/lib on remote"
+    $exitCode = Invoke-Ssh "rm -rf '$RemotePath/lib'"
+    if ($exitCode -ne 0) { throw "Remote rm lib failed" }
     Write-Step "Uploading lib/ to $RemotePath (scp)"
     $exitCode = Invoke-Scp "$LocalPackage\lib" "$($script:Target):${RemotePath}/" -Recursive
     if ($exitCode -ne 0) { throw "scp lib failed" }

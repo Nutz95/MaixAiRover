@@ -15,7 +15,7 @@ import time
 sys.path.insert(0, "/root/roverMecanum")
 sys.path.insert(0, "/tmp")
 
-from lib.cp210x_usb_serial import Cp210xUsbSerial  # noqa: E402
+from lib.esp.cp210x_usb_serial import Cp210xUsbSerial  # noqa: E402
 
 
 def _cmd(port: Cp210xUsbSerial, line: str, timeout_s: float = 2.0) -> str:

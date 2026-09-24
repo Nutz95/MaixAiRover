@@ -9,12 +9,12 @@
   "bluetooth_scan_timeout_sec": 30,
   "controller_mac": "78:86:2E:AC:8D:03",
   "camera": {
-    "enabled": false,
+    "enabled": true,
     "width": 640,
     "height": 480,
-    "fps": 30,
+    "fps": 60,
     "format": "rgb888",
-    "display_fps": 30
+    "display_fps": 20
   },
   "esp": {
     "front": {
@@ -30,7 +30,7 @@
   },
   "drive_backend": "yahboom",
   "yahboom": {
-    "port": "",
+    "port": "ch340",
     "baud": 115200,
     "max_vx": 1.0,
     "max_vy": 1.0,
@@ -61,9 +61,9 @@
     "max_speed": 255,
     "send_interval_ms": 15,
     "deadzone_percent": 0,
-    "axis_sensitivity_percent": 70,
-    "axis_expo": 2.2,
-    "axis_curve": "log",
+    "axis_sensitivity_percent": 100,
+    "axis_expo": 1.6,
+    "axis_curve": "expo",
     "speed_step": 5
   },
   "mapping": {

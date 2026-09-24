@@ -5,8 +5,8 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "maixcam", "roverMecanum"))
 
-from lib.peripheral_check import PeripheralCheck
-from lib.peripheral_checklist import PeripheralChecklist
+from lib.health.peripheral_check import PeripheralCheck
+from lib.health.peripheral_checklist import PeripheralChecklist
 
 
 def main() -> None:

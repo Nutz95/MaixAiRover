@@ -8,19 +8,19 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "maixcam", "roverMecanum"))
 
-from lib.chassis_velocity import ChassisVelocity
-from lib.drive_command import DriveCommand
-from lib.drive_command_chassis_mapper import DriveCommandChassisMapper
-from lib.yahboom_config import YahboomConfig
-from lib.yahboom_drive_board import YahboomDriveBoard
-from lib.yahboom_protocol import (
+from lib.motion.chassis_velocity import ChassisVelocity
+from lib.motion.drive_command import DriveCommand
+from lib.motion.drive_command_chassis_mapper import DriveCommandChassisMapper
+from lib.yahboom.yahboom_config import YahboomConfig
+from lib.yahboom.yahboom_drive_board import YahboomDriveBoard
+from lib.yahboom.yahboom_protocol import (
   FUNC_MOTION,
   FUNC_SET_CAR_TYPE,
   HEAD,
   encode_car_motion,
   encode_set_car_type,
 )
-from lib.yahboom_rx_parser import YahboomRxParser
+from lib.yahboom.yahboom_rx_parser import YahboomRxParser
 
 
 class _MemTransport:
@@ -86,6 +86,14 @@ def test_chassis_mapper_scales() -> None:
   vel = mapper.map_command(DriveCommand(axis_forward=32767, max_speed=255))
   assert abs(vel.vx - 1.0) < 1e-3
   assert abs(vel.vy) < 1e-6
+  # +strafe (RT / STRAFE_RIGHT) → Yahboom −vy (right).
+  right = mapper.map_command(DriveCommand(axis_strafe=32767, max_speed=255))
+  assert right.vy < 0
+  left = mapper.map_command(DriveCommand(axis_strafe=-32767, max_speed=255))
+  assert left.vy > 0
+  # +spin (stick right) → Yahboom −vz (CW).
+  cw = mapper.map_command(DriveCommand(axis_spin=32767, max_speed=255))
+  assert cw.vz < 0
 
 
 def main() -> None:

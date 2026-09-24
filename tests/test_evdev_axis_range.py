@@ -1,7 +1,7 @@
 """Right-stick ABS_Z/ABS_RZ must use stick range, not trigger defaults."""
 
-from lib.evdev_axis_mapper import EvdevAxisMapper
-from lib.evdev_constants import ABS_RZ, ABS_Z, ABS_GAS, default_abs_range
+from lib.input.evdev_axis_mapper import EvdevAxisMapper
+from lib.input.evdev_constants import ABS_RZ, ABS_Z, ABS_GAS, default_abs_range
 
 
 def test_z_rz_default_to_stick_range():

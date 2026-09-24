@@ -19,7 +19,7 @@ for path in ("/root/roverMecanum", os.path.join(os.path.dirname(__file__), "..",
   if os.path.isdir(path) and path not in sys.path:
     sys.path.insert(0, path)
 
-from lib.esp_binary_client import EspBinaryClient  # noqa: E402
+from lib.esp.esp_binary_client import EspBinaryClient  # noqa: E402
 
 
 def _sample_rates(client: EspBinaryClient, seconds: float) -> tuple[float, float, int, int]:

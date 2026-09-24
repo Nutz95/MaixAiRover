@@ -18,9 +18,10 @@ CONFIG_JSON = os.path.join(
 def _iter_lib_py() -> list[str]:
   root = os.path.abspath(LIB_DIR)
   paths = []
-  for name in os.listdir(root):
-    if name.endswith(".py") and name != "__init__.py":
-      paths.append(os.path.join(root, name))
+  for dirpath, _dirnames, filenames in os.walk(root):
+    for name in filenames:
+      if name.endswith(".py") and name != "__init__.py":
+        paths.append(os.path.join(dirpath, name))
   return sorted(paths)
 
 
