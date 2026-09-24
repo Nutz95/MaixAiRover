@@ -13,6 +13,8 @@ _FORMATS = {
   "yuv420sp": image.Format.FMT_YVU420SP,
 }
 
+_STOP_JOIN_S = 2.5
+
 
 def _resolve_format(name):
   """
@@ -42,6 +44,7 @@ class CameraPreviewService:
     self._fps = max(1, min(60, int(fps)))
     self._pixel_format = pixel_format
     self._lock = threading.Lock()
+    self._hw_lock = threading.Lock()
     self._latest = None
     self._cam = None
     self._preview = None
@@ -51,6 +54,7 @@ class CameraPreviewService:
     self._paused = threading.Event()
     self._ready = threading.Event()
     self._error = ""
+    self._released = False
 
   @property
   def error(self):
@@ -69,6 +73,7 @@ class CameraPreviewService:
     self._stop.clear()
     self._paused.clear()
     self._ready.clear()
+    self._released = False
     self._thread = threading.Thread(target=self._worker, daemon=True, name="cam-preview")
     self._thread.start()
     deadline = time.ticks_ms() + 8000
@@ -78,13 +83,16 @@ class CameraPreviewService:
       self._ready.wait(timeout=0.02)
 
   def stop(self):
-    """Stop the preview worker and release camera hardware."""
-    if self._stop.is_set() and self._cam is None:
-      return
+    """Signal the worker to stop; release HW only after the worker exits."""
     self._stop.set()
     self._paused.clear()
-    if self._thread and self._thread.is_alive():
-      self._thread.join(timeout=2.5)
+    thread = self._thread
+    if thread is not None and thread.is_alive():
+      thread.join(timeout=_STOP_JOIN_S)
+      if thread.is_alive():
+        print("camera: stop join timed out — worker still owns hardware")
+        return
+    # Worker already ran finally → _release_hw; only clean up if it never started.
     self._release_hw()
     self._thread = None
 
@@ -134,10 +142,10 @@ class CameraPreviewService:
             frame = self._preview.read()
         except Exception as camera_error:
           self._error = str(camera_error)
+          print(f"camera read: {camera_error}")
         if frame is not None:
           with self._lock:
             self._latest = frame
-          # Yield GIL; camera.read() already paces when a new frame is ready.
           self._stop.wait(timeout=0.001)
         else:
           self._stop.wait(timeout=0.005)
@@ -148,20 +156,25 @@ class CameraPreviewService:
       self._release_hw()
 
   def _release_hw(self):
+    """Idempotent camera teardown (only one caller deletes native handles)."""
+    with self._hw_lock:
+      if self._released:
+        return
+      self._released = True
     self._ready.clear()
     with self._lock:
       self._latest = None
     try:
       if self._preview is not None:
         del self._preview
-    except Exception:
-      pass
+    except Exception as release_error:
+      print(f"camera: preview release failed: {release_error}")
     self._preview = None
     try:
       if self._cam is not None:
         del self._cam
-    except Exception:
-      pass
+    except Exception as release_error:
+      print(f"camera: camera release failed: {release_error}")
     self._cam = None
     gc.collect()
     print("camera: released")

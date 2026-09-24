@@ -150,29 +150,41 @@ class XboxRoverApp:
       self.shutdown()
 
   def shutdown(self) -> None:
-    """Stop input, motors, and camera once."""
+    """Stop motors, teleop, USB, camera, then Xbox (avoids teardown races)."""
     if self._shutdown_done:
       return
     self._shutdown_done = True
     self._exit.set()
+    try:
+      self._rover.send_stop()
+    except Exception as stop_error:
+      print(f"shutdown: send_stop: {stop_error}")
     self._control.stop()
     if self._debug is not None:
-      self._debug.shutdown()
+      try:
+        self._debug.shutdown()
+      except Exception as debug_error:
+        print(f"shutdown: esp debug: {debug_error}")
     if self._rear_debug is not None:
-      self._rear_debug.shutdown()
+      try:
+        self._rear_debug.shutdown()
+      except Exception as debug_error:
+        print(f"shutdown: rear esp debug: {debug_error}")
     if self._yahboom_board is not None:
       try:
         self._yahboom_board.close()
-      except Exception:
-        pass
-    self._xbox.close()
-    try:
-      self._rover.send_stop()
-    except Exception:
-      pass
+      except Exception as board_error:
+        print(f"shutdown: yahboom: {board_error}")
     if self._camera is not None:
-      self._camera.stop()
+      try:
+        self._camera.stop()
+      except Exception as camera_error:
+        print(f"shutdown: camera: {camera_error}")
       self._camera = None
+    try:
+      self._xbox.close()
+    except Exception as xbox_error:
+      print(f"shutdown: xbox: {xbox_error}")
 
   def _control_tick(self) -> None:
     """Light work on the control thread (config reload + LB/RB + sensor cache)."""
@@ -448,8 +460,8 @@ class XboxRoverApp:
     self._xbox.request_stop()
     try:
       self._rover.send_stop()
-    except OSError:
-      pass
+    except OSError as stop_error:
+      print(f"exit: send_stop: {stop_error}")
     self._exit.set()
     app.set_exit_flag(True)
 

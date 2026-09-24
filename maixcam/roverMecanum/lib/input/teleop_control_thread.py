@@ -40,11 +40,14 @@ class TeleopControlThread:
     self._thread.start()
 
   def stop(self) -> None:
-    """Stop the control thread."""
+    """Stop the control thread and wait for it to leave the drive path."""
     self._stop.set()
     if self._thread is not None:
-      self._thread.join(timeout=1.0)
-      self._thread = None
+      self._thread.join(timeout=2.0)
+      if self._thread.is_alive():
+        print("teleop-ctrl: stop join timed out")
+      else:
+        self._thread = None
 
   def _run(self) -> None:
     send_ms = 0
@@ -61,8 +64,8 @@ class TeleopControlThread:
       elif was_connected and not snap.connected:
         try:
           self._rover.send_stop()
-        except Exception:
-          pass
+        except Exception as stop_error:
+          print(f"teleop-ctrl: send_stop on disconnect: {stop_error}")
       was_connected = snap.connected
       # Yield GIL so HUD can draw; send_interval (~15ms) still bounds motor lag.
       time.sleep_ms(6)

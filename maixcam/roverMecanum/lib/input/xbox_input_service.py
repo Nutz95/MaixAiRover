@@ -150,6 +150,12 @@ class XboxInputService:
   def close(self) -> None:
     """Stop evdev and the BlueZ agent (app shutdown)."""
     self.request_stop()
+    thread = self._thread
+    if thread is not None and thread.is_alive():
+      thread.join(timeout=2.0)
+      if thread.is_alive():
+        print("xbox-input: worker join timed out")
+    self._thread = None
     self._pairing.close()
 
   def _set_status(self, status, progress=None):

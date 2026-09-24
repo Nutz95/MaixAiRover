@@ -38,6 +38,7 @@ class EspLinkPump:
     self._dbg_action: EspDebugAction | None = None
     self._wake = threading.Event()
     self._stop_acked = False
+    self._thread: threading.Thread | None = None
 
   def snapshot(self) -> EspDebugSnapshot:
     """Return panel visibility, link name, status, and latest TELEM."""
@@ -74,25 +75,29 @@ class EspLinkPump:
       self._status = "opening…"
     self._stop.clear()
     self._wake.set()
-    threading.Thread(target=self._run, daemon=True, name="esp-pump").start()
+    self._thread = threading.Thread(target=self._run, daemon=True, name="esp-pump")
+    self._thread.start()
 
   def stop(self) -> None:
-    """Close link and stop the pump."""
+    """Close link after the pump thread exits (avoids double-close races)."""
     with self._lock:
       self._wanted = False
       self._panel_open = False
     self._stop.set()
     self._wake.set()
+    thread = self._thread
+    if thread is not None and thread.is_alive():
+      thread.join(timeout=2.0)
+      if thread.is_alive():
+        print("esp-pump: stop join timed out")
+    self._thread = None
     with self._lock:
       self._status = ""
       self._telem = None
-      client = self._client
+      # Worker closes the client; clear any leftover handle.
       self._client = None
-    if client is not None:
-      try:
-        client.close()
-      except Exception:
-        pass
+      self._alive = False
+      self._link = ""
 
   def set_panel_open(self, open_: bool) -> None:
     """Show/hide DBG panel; starts the pump when opening."""
@@ -179,8 +184,8 @@ class EspLinkPump:
         time.sleep(0.01)
     try:
       client.close()
-    except Exception:
-      pass
+    except Exception as close_error:
+      print(f"esp-pump: client close: {close_error}")
     with self._lock:
       if self._client is client:
         self._client = None
