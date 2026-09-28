@@ -21,7 +21,8 @@ from lib.motion.encoder_counts import EncoderCounts
 class YahboomDriveBoard:
   """``ChassisMotionPort`` over Rosmaster ``set_car_motion`` (not open-loop PWM).
 
-  Channel silk for our rover (encoders reported M1..M4): FR, FL, RR, RL.
+  Firmware channel map (Yahboom docs §12/§15): M1=FL, M2=RL, M3=FR, M4=RR.
+  Wiring must match, otherwise ``vz`` spins front-vs-rear instead of yaw.
 
   USB I/O is serialized on ``_io_lock``. HUD getters only read the last
   parsed sample (no USB) so display never blocks on CH340 bulk transfers.
@@ -76,8 +77,8 @@ class YahboomDriveBoard:
       enc = self._parser.last_encoders
       if enc is None:
         return EncoderCounts()
-      # Board M1=FR, M2=FL, M3=RR, M4=RL → EncoderCounts.m1..m4 = FL,FR,RL,RR.
-      return EncoderCounts(m1=enc.m2, m2=enc.m1, m3=enc.m4, m4=enc.m3)
+      # Board M1=FL, M2=RL, M3=FR, M4=RR → EncoderCounts.m1..m4 = FL,FR,RL,RR.
+      return EncoderCounts(m1=enc.m1, m2=enc.m3, m3=enc.m2, m4=enc.m4)
 
   def clear_encoders(self) -> None:
     """Not exposed by Rosmaster host protocol — no-op."""

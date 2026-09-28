@@ -25,6 +25,8 @@ class BallFollowSettings:
     "min_aspect_ratio",
     "max_aspect_ratio",
     "image_center_x_ratio",
+    "target_center_y_ratio",
+    "target_y_tolerance_ratio",
     "target_height_ratio",
     "target_tolerance_ratio",
     "too_close_height_ratio",
@@ -46,6 +48,17 @@ class BallFollowSettings:
     "search_pause_ms",
     "search_retreat_ms",
     "search_retreat_axis",
+    "search_encoder_yaw_cap_deg",
+    "search_imu_glitch_deg",
+    "search_turn_stall_mult",
+    "approach_curve",
+    "approach_near_ratio",
+    "approach_near_cap_ratio",
+    "approach_full_error_floor",
+    "retreat_curve",
+    "retreat_soft_cap_ratio",
+    "align_creep_divisor",
+    "align_spin_full_error",
     "compass_fix_spin_axis",
     "compass_fix_tolerance_deg",
     "compass_fix_timeout_ms",
@@ -90,10 +103,14 @@ class BallFollowSettings:
     self.min_aspect_ratio = max(0.1, as_float(follow, "min_aspect_ratio", 0.55))
     self.max_aspect_ratio = min(4.0, as_float(follow, "max_aspect_ratio", 1.8))
     self.image_center_x_ratio = self._ratio(follow, "image_center_x_ratio", 0.5)
+    # Vertical formation setpoint (~3/5 from top); Y owns approach/retreat.
+    self.target_center_y_ratio = self._ratio(follow, "target_center_y_ratio", 0.60)
+    self.target_y_tolerance_ratio = self._ratio(follow, "target_y_tolerance_ratio", 0.06)
     self.target_height_ratio = self._ratio(follow, "target_height_ratio", 0.22)
     self.target_tolerance_ratio = self._ratio(follow, "target_tolerance_ratio", 0.07)
     self.too_close_height_ratio = self._ratio(follow, "too_close_height_ratio", 0.40)
-    self.too_close_center_y_ratio = self._ratio(follow, "too_close_center_y_ratio", 0.72)
+    # Hard bumper edge only (not the Y hold band).
+    self.too_close_center_y_ratio = self._ratio(follow, "too_close_center_y_ratio", 0.90)
     self.min_distance_error = self._ratio(follow, "min_distance_error", 0.04)
     self.exit_velocity_threshold = max(
       0.0, as_float(follow, "exit_velocity_threshold", 0.05),
@@ -120,6 +137,21 @@ class BallFollowSettings:
     self.search_retreat_axis = max(
       1, min(self.max_retreat_axis, as_int(follow, "search_retreat_axis", 4500)),
     )
+    self.search_encoder_yaw_cap_deg = max(
+      5.0, min(90.0, as_float(follow, "search_encoder_yaw_cap_deg", 45.0)),
+    )
+    self.search_imu_glitch_deg = max(
+      30.0, min(180.0, as_float(follow, "search_imu_glitch_deg", 90.0)),
+    )
+    self.search_turn_stall_mult = max(1, min(10, as_int(follow, "search_turn_stall_mult", 3)))
+    self.approach_curve = max(0.2, min(3.0, as_float(follow, "approach_curve", 0.55)))
+    self.approach_near_ratio = self._ratio(follow, "approach_near_ratio", 0.55)
+    self.approach_near_cap_ratio = self._ratio(follow, "approach_near_cap_ratio", 0.35)
+    self.approach_full_error_floor = self._ratio(follow, "approach_full_error_floor", 0.08)
+    self.retreat_curve = max(0.2, min(3.0, as_float(follow, "retreat_curve", 1.6)))
+    self.retreat_soft_cap_ratio = self._ratio(follow, "retreat_soft_cap_ratio", 0.65)
+    self.align_creep_divisor = max(1, min(8, as_int(follow, "align_creep_divisor", 2)))
+    self.align_spin_full_error = self._ratio(follow, "align_spin_full_error", 0.40)
     self.compass_fix_spin_axis = max(
       1, min(AXIS_MAX, as_int(follow, "compass_fix_spin_axis", 5000)),
     )
@@ -130,7 +162,7 @@ class BallFollowSettings:
     self.horizontal_deadzone = self._ratio(follow, "horizontal_deadzone", 0.12)
     self.lost_search_ms = max(500, as_int(follow, "lost_search_ms", 2000))
     self.trajectory_max_points = max(4, min(64, as_int(follow, "trajectory_max_points", 24)))
-    self.forward_axis_sign = self._axis_sign(follow, "forward_axis_sign", 1)
+    self.forward_axis_sign = self._axis_sign(follow, "forward_axis_sign", -1)
     self.spin_axis_sign = self._axis_sign(follow, "spin_axis_sign", 1)
     self.ball_diameter_cm = max(0.5, as_float(follow, "ball_diameter_cm", 3.5))
     self.depth_fusion_enabled = as_bool(follow, "depth_fusion_enabled", False)

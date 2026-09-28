@@ -10,9 +10,26 @@ import sys
 LIB_DIR = os.path.join(
   os.path.dirname(__file__), "..", "maixcam", "roverMecanum", "lib",
 )
+TOOLS_YAHBOOM_DEBUG = os.path.join(
+  os.path.dirname(__file__), "..", "tools", "yahboom_debug",
+)
 CONFIG_JSON = os.path.join(
   os.path.dirname(__file__), "..", "maixcam", "roverMecanum", "config.json",
 )
+
+
+def _iter_guarded_py() -> list[str]:
+  """Shipable lib/ plus host debug tools that must stay 1-class-per-file."""
+  paths = []
+  for root in (LIB_DIR, TOOLS_YAHBOOM_DEBUG):
+    abs_root = os.path.abspath(root)
+    if not os.path.isdir(abs_root):
+      continue
+    for dirpath, _dirnames, filenames in os.walk(abs_root):
+      for name in filenames:
+        if name.endswith(".py") and name != "__init__.py":
+          paths.append(os.path.join(dirpath, name))
+  return sorted(paths)
 
 
 def _iter_lib_py() -> list[str]:
@@ -26,15 +43,16 @@ def _iter_lib_py() -> list[str]:
 
 
 def test_one_top_level_class_per_file() -> None:
-  """Each lib module may define at most one top-level class (incl. Protocol/Enum)."""
+  """Each guarded module may define at most one top-level class."""
   violations = []
-  for path in _iter_lib_py():
+  for path in _iter_guarded_py():
     with open(path, encoding="utf-8") as handle:
       tree = ast.parse(handle.read(), filename=path)
     classes = [n for n in tree.body if isinstance(n, ast.ClassDef)]
     if len(classes) > 1:
       names = ", ".join(c.name for c in classes)
-      violations.append(f"{os.path.basename(path)}: {len(classes)} classes ({names})")
+      rel = os.path.relpath(path, os.path.dirname(__file__))
+      violations.append(f"{rel}: {len(classes)} classes ({names})")
   assert not violations, "1 class = 1 file:\n  " + "\n  ".join(violations)
 
 

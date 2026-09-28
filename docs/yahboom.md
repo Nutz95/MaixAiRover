@@ -14,12 +14,12 @@ Docs: [yahboom.net/study/ROS-Driver-Board](https://www.yahboom.net/study/ROS-Dri
 | API | Encoders / PID | Use |
 |-----|----------------|-----|
 | **`set_car_motion(vx,vy,vz)`** | **Yes** — STM32 mixes mecanum + closed-loop PID on encoders | **Teleop / tracking (our path)** |
-| `set_motor(m1..m4)` | **No** — open-loop PWM `[-100,100]` | Bench / ignore for navigation |
+| `set_motor(m1..m4)` | **No** — open-loop PWM `[-100,100]` | Bench only |
 | `set_car_run(...)` | Discrete presets | Not used |
 
 Maix still does stick mapping; it sends **body velocity**, not wheel PWM. The board counters deadband, motor mismatch, and slip via encoders. Set `rover.deadzone_percent` to **0** for object-follow (stick deadzone is the wrong place to fight mechanical deadband).
 
-**Frame (Rosmaster):** `+vx` forward, `+vy` **left**, `+vz` CCW. Teleop “strafe right / spin CW” are negated in `DriveCommandChassisMapper` before USB.
+**Frame (Rosmaster):** `+vx` forward, `+vy` **left**, `+vz` CCW. Teleop uses `axis_forward < 0` = forward and `axis_strafe > 0` = right (Xbox), so forward, strafe and spin are all negated into that frame.
 
 **Xbox strafe:** LT = crab left, RT = crab right (`mapping.axes.drive_strafe = trigger_diff`).
 
@@ -35,10 +35,14 @@ Maix still does stick mapping; it sends **body velocity**, not wheel PWM. The bo
 
 | Wheel | Yahboom channel |
 |-------|-----------------|
-| Front right | Motor 1 |
-| Front left | Motor 2 |
-| Rear right | Motor 3 |
-| Rear left | Motor 4 |
+| Front left | Motor 1 |
+| Rear left | Motor 2 |
+| Front right | Motor 3 |
+| Rear right | Motor 4 |
+
+Source: Yahboom STM32 course §12 / §15 (“Motor 1 upper left, Motor 2 lower left, Motor 3 upper right, Motor 4 lower right”). The map is **fixed in firmware**; `car_type` does not remap it.
+
+Symptom of a wrong map: `vx` still looks fine (all wheels equal), crab may even look right, but `vz` spins **front vs rear** instead of left vs right — the STM32 is mixing for corners that are plugged elsewhere.
 
 Encoder motor pinout / 56:1 / 178 rpm: [`resources/Motors/README.md`](../resources/Motors/README.md).
 
@@ -68,8 +72,15 @@ Deploy (overwrite remote config):
 With Micro-USB data on the PC (e.g. `COM15`) and DC power on:
 
 ```powershell
+.\tools\yahboom_debug_ui.ps1 -Port COM15
+```
+
+Tk cockpit (like ROSEyes): **Gamepad** tab (Xbox via pygame → `set_car_motion`, ARM checkbox) and **Motors** tab with sub-tabs **M1 FL / M2 RL / M3 FR / M4 RR** (open-loop PWM + encoder delta). STOP ALL always on the toolbar. Needs `pyserial`, `Rosmaster_Lib`, `pygame`.
+
+CLI / text menu still available:
+
+```powershell
 .\tools\yahboom_bench.ps1 -Port COM15
 ```
 
-Menu: ping / battery / IMU 9-axis / encoders / per-motor PWM fwd-rev-stop.  
-Needs `pyserial` + `Rosmaster_Lib` (script installs them on first run).
+Menu: ping / battery / IMU / encoders / per-motor PWM. Same deps minus pygame.

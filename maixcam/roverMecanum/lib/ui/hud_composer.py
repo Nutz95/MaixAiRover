@@ -80,16 +80,23 @@ class HudComposer:
 
   @staticmethod
   def _drawable_rgb(frame):
-    """Return an RGB888 image MaixPy can draw on."""
+    """Return a drawable RGB888 **copy** so HUD never paints into detect buffer.
+
+    Camera ``get_frame()`` hands out the live capture. Ball detect reads that
+    same object on the teleop thread. Drawing the red/green mode LED in-place
+    made red-mode tracking lock onto the HUD indicator.
+    """
     try:
       fmt = frame.format()
     except Exception as format_error:
       print(f"hud: frame.format: {format_error}")
       return frame
-    if fmt in (image.Format.FMT_RGB888, image.Format.FMT_BGR888):
-      return frame
     try:
+      if fmt == image.Format.FMT_RGB888:
+        return frame.copy()
+      if fmt == image.Format.FMT_BGR888:
+        return frame.to_format(image.Format.FMT_RGB888)
       return frame.to_format(image.Format.FMT_RGB888)
     except Exception as convert_error:
-      print(f"hud: cannot convert frame ({convert_error}); RGB blank")
+      print(f"hud: cannot copy/convert frame ({convert_error}); RGB blank")
       return image.Image(frame.width(), frame.height(), bg=image.COLOR_BLACK)

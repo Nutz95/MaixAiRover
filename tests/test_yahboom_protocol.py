@@ -77,16 +77,19 @@ def test_drive_sends_car_motion_not_pwm() -> None:
   board.set_velocity(ChassisVelocity(vx=0.5, vy=0.0, vz=0.0))
   motion_frames = [f for f in tx.written if len(f) >= 4 and f[3] == FUNC_MOTION]
   assert motion_frames, "expected set_car_motion frame"
-  assert all(f[3] != 0x10 for f in tx.written if len(f) > 3 and f[3] in (0x10, FUNC_MOTION) or True)
+  assert all(f[3] != 0x10 for f in tx.written if len(f) > 3), "no open-loop PWM"
 
 
 def test_chassis_mapper_scales() -> None:
   cfg = YahboomConfig(port="", max_vx=1.0, max_vy=1.0, max_vz=5.0)
   mapper = DriveCommandChassisMapper(cfg)
-  vel = mapper.map_command(DriveCommand(axis_forward=32767, max_speed=255))
-  assert abs(vel.vx - 1.0) < 1e-3
-  assert abs(vel.vy) < 1e-6
-  # +strafe (RT / STRAFE_RIGHT) → Yahboom −vy (right).
+  # Stick-up / D-pad forward = negative axis → Yahboom +vx.
+  fwd = mapper.map_command(DriveCommand(axis_forward=-32767, max_speed=255))
+  assert abs(fwd.vx - 1.0) < 1e-3
+  assert abs(fwd.vy) < 1e-6
+  back = mapper.map_command(DriveCommand(axis_forward=32767, max_speed=255))
+  assert back.vx < 0
+  # +strafe (RT / STRAFE_RIGHT) → Yahboom −vy (Rosmaster +vy is left).
   right = mapper.map_command(DriveCommand(axis_strafe=32767, max_speed=255))
   assert right.vy < 0
   left = mapper.map_command(DriveCommand(axis_strafe=-32767, max_speed=255))

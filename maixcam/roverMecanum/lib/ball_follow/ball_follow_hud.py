@@ -19,10 +19,14 @@ class BallFollowHud:
     self.height = height
 
   def draw(self, img, ball_snapshot: BallFollowSnapshot) -> None:
-    """Draw mode LED, blob box, and trajectory (no hard-to-read text badge)."""
+    """Draw mode LED, formation guides, blob box, and trajectory.
+
+    Callers must pass the HUD display copy only — never the detect buffer.
+    """
     self._draw_mode_led(img, ball_snapshot)
     if not ball_snapshot.enabled:
       return
+    self._draw_setpoint_guides(img, ball_snapshot)
     self._draw_trajectory(img, ball_snapshot)
     observation = ball_snapshot.observation
     box_color = (
@@ -46,6 +50,19 @@ class BallFollowHud:
       image.Color.from_rgb(255, 255, 255),
       thickness=-1,
     )
+
+  def _draw_setpoint_guides(self, img, ball_snapshot: BallFollowSnapshot) -> None:
+    """Thin crosshair at the X/Y formation setpoints (HUD copy only)."""
+    width = max(1, img.width())
+    height = max(1, img.height())
+    cx = int(ball_snapshot.target_center_x_ratio * width)
+    cy = int(ball_snapshot.target_center_y_ratio * height)
+    cx = max(0, min(width - 1, cx))
+    cy = max(0, min(height - 1, cy))
+    # Cyan — readable on green/red turf without looking like a blob.
+    guide = image.Color.from_rgb(60, 220, 255)
+    img.draw_line(0, cy, width - 1, cy, guide, thickness=1)
+    img.draw_line(cx, 0, cx, height - 1, guide, thickness=1)
 
   def _draw_mode_led(self, img, ball_snapshot: BallFollowSnapshot) -> None:
     """Colour LED: grey=manual, green/red=follow that colour."""

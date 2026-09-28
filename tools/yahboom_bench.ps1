@@ -40,14 +40,21 @@ function Get-SerialPorts {
   }
 }
 
+function Test-PythonImport([string]$Statement) {
+  $prev = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  & python -c $Statement 1>$null 2>$null
+  $ok = ($LASTEXITCODE -eq 0)
+  $ErrorActionPreference = $prev
+  return $ok
+}
+
 function Ensure-PythonDeps {
-  python -c "import serial" 2>$null
-  if ($LASTEXITCODE -ne 0) {
+  if (-not (Test-PythonImport "import serial")) {
     Write-Host "Installing pyserial..."
     python -m pip install pyserial
   }
-  python -c "from Rosmaster_Lib import Rosmaster" 2>$null
-  if ($LASTEXITCODE -ne 0) {
+  if (-not (Test-PythonImport "from Rosmaster_Lib import Rosmaster")) {
     Write-Host "Installing Rosmaster_Lib (Yahboom driver)..."
     python -m pip install "git+https://github.com/Roblibs/Rosmaster_Lib.git"
   }
@@ -77,7 +84,7 @@ function Show-Banner {
   Write-Host ("  Port     : {0} @ 115200" -f $Port)
   Write-Host ("  PWM      : {0}  (open-loop set_motor - wheels OFF the ground)" -f $Pwm)
   Write-Host ("  Duration : {0} s per motor spin" -f $Seconds)
-  Write-Host "  Map      : M1=FR  M2=FL  M3=RR  M4=RL"
+  Write-Host "  Map      : M1=FL  M2=RL  M3=FR  M4=RR"
   Write-Host ""
   Write-Host "DC power (6-13 V) must be ON for motors / battery reading."
   Write-Host "Micro-USB Connect USB = data. Type-C is 5 V OUT only."
@@ -97,11 +104,12 @@ function Show-Menu {
   Write-Host ("  9  change COM port (now {0})" -f $Port)
   Write-Host (" 10  change PWM (now {0})" -f $Pwm)
   Write-Host " 11  interactive Python menu (keeps serial open)"
+  Write-Host " 12  Tk debug UI (gamepad + motor tabs)"
   Write-Host "  q  quit"
 }
 
 function Invoke-MotorSubmenu {
-  Write-Host "  Motor map: 1=FR  2=FL  3=RR  4=RL"
+  Write-Host "  Motor map: 1=FL  2=RL  3=FR  4=RR"
   Write-Host "  a  M1 fwd    b  M1 rev"
   Write-Host "  c  M2 fwd    d  M2 rev"
   Write-Host "  e  M3 fwd    f  M3 rev"
@@ -179,6 +187,10 @@ while ($choice -ne "q") {
     "11" {
       Write-Host "Launching interactive session (q to leave)..."
       python $Py --port $Port --pwm $Pwm --seconds $Seconds menu
+    }
+    "12" {
+      Write-Host "Launching Tk debug UI..."
+      & (Join-Path $ToolsDir "yahboom_debug_ui.ps1") -Port $Port
     }
     "q" { }
     default {

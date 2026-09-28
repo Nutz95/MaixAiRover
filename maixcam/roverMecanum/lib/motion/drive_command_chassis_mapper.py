@@ -20,11 +20,11 @@ class DriveCommandChassisMapper:
     """Convert a teleop command into body-frame velocity for the STM32 PID.
 
     Yahboom Rosmaster frame (ROS-style): +vx forward, +vy left, +vz CCW.
-    Teleop ``axis_strafe`` / spin use + = right / CW, so vy and vz are negated.
+    Teleop uses ``axis_forward < 0`` = forward and ``axis_strafe > 0`` = right
+    (Xbox / mecanum convention), so all three axes are negated.
     """
     session = max(0.0, min(1.0, float(command.max_speed) / 255.0))
-    vx = (float(command.axis_forward) / _AXIS_MAX) * self._config.max_vx * session
-    # +axis_strafe = crab right → Yahboom wants negative vy.
+    vx = -(float(command.axis_forward) / _AXIS_MAX) * self._config.max_vx * session
     vy = -(float(command.axis_strafe) / _AXIS_MAX) * self._config.max_vy * session
     # Pivot shares yaw with spin (mecanum body rotate).
     yaw_axis = float(command.axis_spin) + float(command.axis_pivot)

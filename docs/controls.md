@@ -27,7 +27,19 @@ LAB blob colours live only under `ball_follow.colors` in `config.json` (and `col
 
 Optional `ball_follow.depth_fusion_enabled`: DepthAnything runs **async** (one frame in flight; HUD stays fluid). Ball detect/track/drive are independent — depth busy only freezes the last distance band. `depth_view`: `blend` / `depth` / `rgb`. `depth_interval_ms` can be low (e.g. 50) in `depth` mode. `depth_contour_thickness` dilates Canny edges (1–4). Display only — approach distance still uses blob size, not depth.
 
-## Yahboom path (no Maix wheel mixer)
+ils en ont pas bcp ## Mecanum body velocities (Yahboom `set_car_motion`)
+
+| Axis | Meaning | How you get it |
+|------|---------|----------------|
+| **vx** | Forward / reverse | Left stick Y |
+| **vy** | **Crab** (strafe sideways) | **LT / RT** (`trigger_diff`) |
+| **vz** | Spin in place (yaw) | Right stick X (+ left X as pivot blend) |
+
+- **Diagonal**: D-pad corners (`diag_fl` …) → `vx` + `vy` together. Same if you hold forward stick + a trigger.
+- **Drift-like**: hold Left Y (vx) + Right X (vz) — the STM32 mixes mecanum; no separate “drift mode” API.
+- **Speed %**: `yahboom.max_vx/vy/vz` are the physical ceilings (m/s, rad/s). LB/RB change `session_max_speed` 0…255, which scales all three: `v = axis × max_v × (speed/255)`.
+
+Maix `config.json` already mirrors Keyestudio: triggers=crab, D-pad diagonals, right stick=spin, left X=pivot.
 
 With `drive_backend=yahboom`, Maix does **not** run `MecanumMixer`. Flow:
 
@@ -37,7 +49,7 @@ With `drive_backend=yahboom`, Maix does **not** run `MecanumMixer`. Flow:
 
 So yes: motion uses encoders. Open-loop `set_motor` PWM is only for the USB bench tool.
 
-Yahboom frame: `+vx` forward, `+vy` left, `+vz` CCW — the mapper flips strafe/spin signs so RT still means “right”.
+Yahboom frame: `+vx` forward, `+vy` left, `+vz` CCW — mapper negates forward, strafe and spin. Requires motor wiring M1=FL, M2=RL, M3=FR, M4=RR (see `docs/yahboom.md`).
 
 ## HUD (connected)
 

@@ -148,7 +148,7 @@ def cmd_motor(board, index: int, direction: str, pwm: int, seconds: float) -> No
   if sign is None:
     raise SystemExit("direction must be fwd|rev|stop")
   duty = 0 if sign == 0 else max(1, min(100, abs(int(pwm)))) * sign
-  label = {1: "FR", 2: "FL", 3: "RR", 4: "RL"}.get(index, "?")
+  label = {1: "FL", 2: "RL", 3: "FR", 4: "RR"}.get(index, "?")
   volts = board.get_battery_voltage()
   if duty != 0 and volts < 6.0:
     print(f"  ABORT: battery={volts:.1f} V — need DC 6-13 V IN + switch ON")
@@ -249,14 +249,14 @@ def interactive_menu(board, pwm: int, seconds: float) -> None:
   3  watch IMU 9-axis (~5s)
   4  watch encoders (~8s) — spin shaft by hand
   5  watch battery (~5s)
-  6  motor M1 FR  fwd
-  7  motor M1 FR  rev
-  8  motor M2 FL  fwd
-  9  motor M2 FL  rev
- 10  motor M3 RR  fwd
- 11  motor M3 RR  rev
- 12  motor M4 RL  fwd
- 13  motor M4 RL  rev
+  6  motor M1 FL  fwd
+  7  motor M1 FL  rev
+  8  motor M2 RL  fwd
+  9  motor M2 RL  rev
+ 10  motor M3 FR  fwd
+ 11  motor M3 FR  rev
+ 12  motor M4 RR  fwd
+ 13  motor M4 RR  rev
  14  STOP all motors
  15  beep
   p  change PWM (now {pwm})

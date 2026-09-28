@@ -113,4 +113,6 @@ class BallFollowController:
         observation=self._observation,
         trajectory=list(self._trajectory),
         command=self._command,
+        target_center_x_ratio=self._settings.image_center_x_ratio,
+        target_center_y_ratio=self._settings.target_center_y_ratio,
       )

@@ -15,10 +15,18 @@ _PHASE_RETREAT = "retreat"
 
 
 class BallFollowPolicy:
-  """Rotate first, then approach or retreat using blob size and image position.
+  """Keep the ball in a stable image band — that *is* following.
 
-  Lost-ball search: encoder ~360° spin → IMU compass fix to search-start
-  heading → pause → retreat → pause → repeat.
+  Strategy (visual formation):
+  1. Spin to center X and servo forward/back on Y **together**.
+  2. Y setpoint ≈ 3/5 from the top (``target_center_y_ratio``): ball too high
+     → approach; ball too low → retreat; inside a deadzone → stop.
+  3. Blob height is safety only (oversized → reverse). Hard bottom edge
+     (``too_close_center_y_ratio``) is emergency reverse.
+  4. Losing the ball at/below the Y setpoint skips the lost wait and reverses.
+
+  Lost-ball search: retreat first → ~360° spin (IMU / encoders) → compass
+  fix → pause → retreat → spin…
   """
 
   def __init__(self, settings: BallFollowSettings):
@@ -32,7 +40,9 @@ class BallFollowPolicy:
     self._search_spin_sign = 1
     self._pause_next = _PHASE_RETREAT
     self._encoder_yaw_accum = 0.0
+    self._imu_yaw_accum = 0.0
     self._search_heading_start = None
+    self._last_search_yaw = None
     self._holding_distance = False
 
   def reset(self) -> None:
@@ -45,7 +55,9 @@ class BallFollowPolicy:
     self._search_spin_sign = 1
     self._pause_next = _PHASE_RETREAT
     self._encoder_yaw_accum = 0.0
+    self._imu_yaw_accum = 0.0
     self._search_heading_start = None
+    self._last_search_yaw = None
     self._holding_distance = False
 
   def decide(
@@ -62,50 +74,70 @@ class BallFollowPolicy:
     self._phase = _PHASE_TRACK
     self._phase_started_ms = None
     self._encoder_yaw_accum = 0.0
+    self._imu_yaw_accum = 0.0
     self._search_heading_start = None
+    self._last_search_yaw = None
     self._update_velocity_x(observation)
     self._last_observation = observation
     self._last_seen_ms = observation.timestamp_ms
 
     horizontal_error = observation.x_ratio - self._settings.image_center_x_ratio
     height = observation.height_ratio
-    if abs(horizontal_error) > self._settings.horizontal_deadzone:
-      return self._align_command(observation, horizontal_error, height)
+    y_ratio = observation.y_ratio
 
-    if (
-      height >= self._settings.too_close_height_ratio
-      or (
-        height >= self._settings.target_height_ratio
-        and observation.y_ratio >= self._settings.too_close_center_y_ratio
-      )
+    # Oversized blob or hard bumper — reverse even while off-center.
+    if height >= self._settings.too_close_height_ratio or (
+      y_ratio >= self._settings.too_close_center_y_ratio
     ):
       self._holding_distance = False
-      return self._retreat_command(height)
+      return self._retreat_command_y(y_ratio)
 
-    approach_limit = (
-      self._settings.target_height_ratio - self._settings.target_tolerance_ratio
+    spin = 0
+    if abs(horizontal_error) > self._settings.horizontal_deadzone:
+      spin = self._align_spin(horizontal_error)
+
+    forward, reason = self._y_distance_axes(y_ratio)
+    if spin != 0 and reason == "target_distance":
+      reason = "align"
+    elif spin != 0 and reason == "approach":
+      reason = "align"
+    return BallFollowCommand(
+      forward=forward,
+      spin=spin,
+      reason=reason,
     )
-    if self._holding_distance:
-      approach_limit -= self._settings.target_tolerance_ratio
 
-    if height < approach_limit:
+  def _y_band(self) -> tuple[float, float, float, float]:
+    """Return enter_lo, enter_hi, exit_lo, exit_hi for the Y hold band."""
+    target = self._settings.target_center_y_ratio
+    tol = self._settings.target_y_tolerance_ratio
+    return (
+      target - tol,
+      target + tol,
+      target - 2.0 * tol,
+      target + 2.0 * tol,
+    )
+
+  def _y_distance_axes(self, y_ratio: float) -> tuple[int, str]:
+    """Servo on image Y: high→approach, low→retreat, in-band→stop."""
+    enter_lo, enter_hi, exit_lo, exit_hi = self._y_band()
+    if self._holding_distance:
+      if exit_lo <= y_ratio <= exit_hi:
+        return 0, "target_distance"
       self._holding_distance = False
-      return self._approach_command(height)
+
+    if y_ratio < enter_lo:
+      axis = self._approach_axis_y(y_ratio)
+      return self._settings.forward_axis_sign * axis, "approach"
+    if y_ratio > enter_hi:
+      axis = self._retreat_axis_y(y_ratio)
+      return -self._settings.forward_axis_sign * axis, "too_close"
 
     self._holding_distance = True
-    return BallFollowCommand(reason="target_distance")
+    return 0, "target_distance"
 
-  def _align_command(
-    self,
-    observation: BallObservation,
-    horizontal_error: float,
-    height: float,
-  ) -> BallFollowCommand:
-    """Spin to center; boost spin when the ball slides sideways fast.
-
-    When still far, creep forward while aligning so pursuit does not stall.
-    """
-    del observation
+  def _align_spin(self, horizontal_error: float) -> int:
+    """Bounded spin toward image center X."""
     lead = self._lateral_spin_scale()
     damped = (
       horizontal_error * self._settings.spin_gain
@@ -115,72 +147,61 @@ class BallFollowPolicy:
       self._settings.min_spin_axis,
       self._settings.max_spin_axis,
       abs(horizontal_error),
-      0.40,
+      self._settings.align_spin_full_error,
     )
     spin_max = min(
       self._settings.max_spin_axis,
       max(spin_floor, int(spin_max * lead)),
     )
     spin = self._drive_axis(damped, spin_floor, spin_max)
-    forward = 0
-    approach_limit = (
-      self._settings.target_height_ratio - self._settings.target_tolerance_ratio
-    )
-    if height < approach_limit:
-      # Half-strength approach while correcting heading (far ball).
-      forward = self._settings.forward_axis_sign * (
-        self._approach_axis(height) // 2
-      )
-    return BallFollowCommand(
-      forward=forward,
-      spin=self._settings.spin_axis_sign * spin,
-      reason="align",
-    )
+    return self._settings.spin_axis_sign * spin
 
-  def _approach_command(self, height: float) -> BallFollowCommand:
-    """Drive forward harder when the blob is small (ball far)."""
+  def _retreat_command_y(self, y_ratio: float) -> BallFollowCommand:
+    """Reverse from Y error (or emergency bumper)."""
     return BallFollowCommand(
-      forward=self._settings.forward_axis_sign * self._approach_axis(height),
-      reason="approach",
-    )
-
-  def _retreat_command(self, height: float) -> BallFollowCommand:
-    """Back away gently when the blob is large (ball close)."""
-    return BallFollowCommand(
-      forward=-self._settings.forward_axis_sign * self._retreat_axis(height),
+      forward=-self._settings.forward_axis_sign * self._retreat_axis_y(y_ratio),
       reason="too_close",
     )
 
-  def _approach_axis(self, height: float) -> int:
-    error = max(
-      self._settings.min_distance_error,
-      self._settings.target_height_ratio - height,
-    )
-    # Ease-out: far errors ramp to max_forward quickly.
-    return self._distance_axis(
+  def _approach_axis_y(self, y_ratio: float) -> int:
+    """Forward magnitude from how high the ball sits above the Y setpoint."""
+    target = self._settings.target_center_y_ratio
+    error = max(self._settings.min_distance_error, target - y_ratio)
+    axis = self._distance_axis(
       error,
       self._settings.min_forward_axis,
       self._settings.max_forward_axis,
-      max(0.08, self._settings.target_height_ratio),
-      curve=0.55,
+      max(self._settings.approach_full_error_floor, target),
+      curve=self._settings.approach_curve,
     )
+    enter_lo, _, _, _ = self._y_band()
+    # Soft near the band so we settle instead of slamming through.
+    if y_ratio >= enter_lo - self._settings.target_y_tolerance_ratio:
+      soft_cap = max(
+        self._settings.min_forward_axis,
+        int(self._settings.max_forward_axis * self._settings.approach_near_cap_ratio),
+      )
+      axis = min(axis, soft_cap)
+    return axis
 
-  def _retreat_axis(self, height: float) -> int:
-    error = max(
-      self._settings.min_distance_error,
-      height - self._settings.target_height_ratio,
-    )
-    # Ease-in: near overshoot → soft reverse; only hard when very close.
+  def _retreat_axis_y(self, y_ratio: float) -> int:
+    """Reverse magnitude from how far below the Y setpoint the ball sits."""
+    target = self._settings.target_center_y_ratio
+    error = max(self._settings.min_distance_error, y_ratio - target)
     soft_max = max(
       self._settings.min_forward_axis,
-      int(self._settings.max_retreat_axis * 0.65),
+      int(self._settings.max_retreat_axis * self._settings.retreat_soft_cap_ratio),
+    )
+    full_error = max(
+      self._settings.approach_full_error_floor,
+      self._settings.too_close_center_y_ratio - target,
     )
     return self._distance_axis(
       error,
       max(1, self._settings.min_forward_axis // 2),
       soft_max,
-      max(0.08, self._settings.too_close_height_ratio - self._settings.target_height_ratio),
-      curve=1.6,
+      full_error,
+      curve=self._settings.retreat_curve,
     )
 
   def _lateral_spin_scale(self) -> float:
@@ -226,6 +247,13 @@ class BallFollowPolicy:
       return BallFollowCommand(reason="target_lost")
     return handler(now_ms, yaw_deg, encoder_yaw_delta_deg)
 
+  def _lost_exited_bottom(self) -> bool:
+    """Last sighting was at/below the Y setpoint — reverse without waiting."""
+    obs = self._last_observation
+    if obs is None:
+      return False
+    return obs.y_ratio >= self._settings.target_center_y_ratio
+
   def _phase_lost_wait(
     self,
     now_ms: int,
@@ -233,10 +261,45 @@ class BallFollowPolicy:
     encoder_yaw_delta_deg: Optional[float],
   ) -> BallFollowCommand:
     del encoder_yaw_delta_deg
-    if now_ms - self._last_seen_ms < self._settings.lost_search_ms:
+    # Bottom exit: reverse immediately (no lost_search_ms dead time).
+    if (
+      not self._lost_exited_bottom()
+      and now_ms - self._last_seen_ms < self._settings.lost_search_ms
+    ):
       return BallFollowCommand(reason="target_lost")
-    self._enter_search_spin(now_ms, yaw_deg)
-    return self._phase_search_spin(now_ms, yaw_deg, 0.0)
+    # Retreat first (often under/near bumper), then spin — skips a useless cycle.
+    self._pause_next = _PHASE_SEARCH_SPIN
+    self._enter_phase(_PHASE_RETREAT, now_ms)
+    return self._phase_retreat(now_ms, yaw_deg, None)
+
+  def _accumulate_search_yaw(
+    self,
+    yaw_deg: Optional[float],
+    encoder_yaw_delta_deg: Optional[float],
+  ) -> None:
+    """Integrate relative yaw; prefer board IMU, clamp encoder glitches."""
+    if yaw_deg is not None:
+      if self._last_search_yaw is not None:
+        step = abs(self.yaw_delta_deg(self._last_search_yaw, yaw_deg))
+        if step < self._settings.search_imu_glitch_deg:
+          self._imu_yaw_accum += step
+      self._last_search_yaw = yaw_deg
+    if encoder_yaw_delta_deg is not None:
+      self._encoder_yaw_accum += min(
+        self._settings.search_encoder_yaw_cap_deg, abs(encoder_yaw_delta_deg),
+      )
+
+  def _search_spin_done(self, now_ms: int) -> bool:
+    """Finish search spin by IMU (preferred) or encoder yaw, else timed stall."""
+    elapsed_ms = now_ms - self._phase_started_ms
+    target = self._settings.search_turn_deg
+    if target > 0:
+      if self._imu_yaw_accum >= target:
+        return True
+      if self._imu_yaw_accum <= 1.0 and self._encoder_yaw_accum >= target:
+        return True
+    stall_ms = self._settings.search_turn_ms * self._settings.search_turn_stall_mult
+    return elapsed_ms >= stall_ms
 
   def _phase_search_spin(
     self,
@@ -244,8 +307,7 @@ class BallFollowPolicy:
     yaw_deg: Optional[float],
     encoder_yaw_delta_deg: Optional[float],
   ) -> BallFollowCommand:
-    if encoder_yaw_delta_deg is not None:
-      self._encoder_yaw_accum += abs(encoder_yaw_delta_deg)
+    self._accumulate_search_yaw(yaw_deg, encoder_yaw_delta_deg)
     if not self._search_spin_done(now_ms):
       return BallFollowCommand(
         spin=self._search_spin_sign * self._settings.search_spin_axis,
@@ -253,6 +315,13 @@ class BallFollowPolicy:
       )
     self._enter_phase(_PHASE_COMPASS_FIX, now_ms)
     return self._phase_compass_fix(now_ms, yaw_deg, None)
+
+  def _enter_search_spin(self, now_ms: int, yaw_deg: Optional[float]) -> None:
+    self._enter_phase(_PHASE_SEARCH_SPIN, now_ms)
+    self._encoder_yaw_accum = 0.0
+    self._imu_yaw_accum = 0.0
+    self._search_heading_start = yaw_deg
+    self._last_search_yaw = yaw_deg
 
   def _phase_compass_fix(
     self,
@@ -315,20 +384,6 @@ class BallFollowPolicy:
   def _enter_phase(self, phase: str, now_ms: int) -> None:
     self._phase = phase
     self._phase_started_ms = now_ms
-
-  def _enter_search_spin(self, now_ms: int, yaw_deg: Optional[float]) -> None:
-    self._enter_phase(_PHASE_SEARCH_SPIN, now_ms)
-    self._encoder_yaw_accum = 0.0
-    self._search_heading_start = yaw_deg
-
-  def _search_spin_done(self, now_ms: int) -> bool:
-    """Finish search spin by encoder yaw, else timed stall fallback."""
-    elapsed_ms = now_ms - self._phase_started_ms
-    target = self._settings.search_turn_deg
-    if target > 0 and self._encoder_yaw_accum >= target:
-      return True
-    # Stall / missing encoders: Keyestudio-style timed fallback (3× turn window).
-    return elapsed_ms >= self._settings.search_turn_ms * 3
 
   def _exit_direction_sign(self) -> int:
     """Choose search spin from the last known ball motion or image side."""

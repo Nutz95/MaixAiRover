@@ -66,12 +66,12 @@ Check in the bench **ping**: battery should read roughly your pack voltage (e.g.
 
 | Wheel | Connector |
 |-------|-----------|
-| Front right | Motor **1** |
-| Front left | Motor **2** |
-| Rear right | Motor **3** |
-| Rear left | Motor **4** |
+| Front left | Motor **1** |
+| Rear left | Motor **2** |
+| Front right | Motor **3** |
+| Rear right | Motor **4** |
 
-Only M1/M2 wired is fine for testing those two.
+Firmware convention (Yahboom STM32 course §12/§15). Any other order breaks `set_car_motion` yaw.
 
 ## Polarity calibration (do this once)
 
