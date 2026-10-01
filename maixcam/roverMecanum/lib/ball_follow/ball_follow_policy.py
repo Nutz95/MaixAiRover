@@ -18,14 +18,15 @@ class BallFollowPolicy:
   """Keep the ball in a stable image band — that *is* following.
 
   Strategy (visual formation):
-  1. Spin to center X and servo forward/back on Y **together**.
-  2. Y setpoint at mid-frame (``target_center_y_ratio`` ≈ 0.5): ball too high
-     → approach; ball too low → retreat; inside a deadzone → stop.
-  3. Spin scales with X error (ease-out curve) and sideways image velocity so
-     a ball leaving the crosshair is chased harder than one near center.
-  4. Blob height is safety only (oversized → reverse). Hard bottom edge
-     (``too_close_center_y_ratio``) is emergency reverse.
-  5. Losing the ball at/below the Y setpoint skips the lost wait and reverses.
+  1. Spin from **image X error only** (no image-velocity feedforward — ego
+     rotation poisons blob motion while turning and caused spin pump).
+     Authority rises toward the frame edge; blob **height** scales urgency
+     (close/large → stronger yaw, far/small → milder — same bearing, but
+     near balls cross the FOV faster).
+  2. Y setpoint at mid-frame: high → approach, low → retreat, in-band → stop.
+  3. Image X velocity is updated only while we are *not* spinning, and used
+     solely to pick search direction when the ball leaves the frame.
+  4. Blob height / hard bottom edge are safety reverse only.
 
   Lost-ball search: retreat first → ~360° spin (IMU / encoders) → compass
   fix → pause → retreat → spin…
@@ -37,6 +38,7 @@ class BallFollowPolicy:
     self._last_observation = None
     self._last_seen_ms = None
     self._velocity_x = 0.0
+    self._last_spin_command = 0
     self._phase = _PHASE_TRACK
     self._phase_started_ms = None
     self._search_spin_sign = 1
@@ -52,6 +54,7 @@ class BallFollowPolicy:
     self._last_observation = None
     self._last_seen_ms = None
     self._velocity_x = 0.0
+    self._last_spin_command = 0
     self._phase = _PHASE_TRACK
     self._phase_started_ms = None
     self._search_spin_sign = 1
@@ -79,7 +82,9 @@ class BallFollowPolicy:
     self._imu_yaw_accum = 0.0
     self._search_heading_start = None
     self._last_search_yaw = None
-    self._update_velocity_x(observation)
+    # Image velocity is only trustworthy while the chassis is not yawing.
+    if self._last_spin_command == 0:
+      self._update_velocity_x(observation)
     self._last_observation = observation
     self._last_seen_ms = observation.timestamp_ms
 
@@ -92,17 +97,19 @@ class BallFollowPolicy:
       y_ratio >= self._settings.too_close_center_y_ratio
     ):
       self._holding_distance = False
+      self._last_spin_command = 0
       return self._retreat_command_y(y_ratio)
 
     spin = 0
     if abs(horizontal_error) > self._settings.horizontal_deadzone:
-      spin = self._align_spin(horizontal_error)
+      spin = self._align_spin(horizontal_error, height)
 
     forward, reason = self._y_distance_axes(y_ratio)
     if spin != 0 and reason == "target_distance":
       reason = "align"
     elif spin != 0 and reason == "approach":
       reason = "align"
+    self._last_spin_command = spin
     return BallFollowCommand(
       forward=forward,
       spin=spin,
@@ -138,36 +145,39 @@ class BallFollowPolicy:
     self._holding_distance = True
     return 0, "target_distance"
 
-  def _align_spin(self, horizontal_error: float) -> int:
-    """Spin toward center X — gentle near crosshair, firm when far / sliding."""
+  def _align_spin(self, horizontal_error: float, height_ratio: float) -> int:
+    """Proportional spin from X error; height scales urgency (close → faster)."""
     err = abs(horizontal_error)
-    lead = self._lateral_spin_scale()
     full = max(1e-6, self._settings.align_spin_full_error)
-    # Ease-out: t rises fast so a modest offset already unlocks high spin.
-    t = min(1.0, err / full) ** self._settings.align_spin_curve
-    floor, ceiling = self._progressive_limits(
-      self._settings.min_spin_axis,
+    # Ease-in (≥1): soft near center, firm toward the frame edge.
+    curve = max(1.0, self._settings.align_spin_curve)
+    t = min(1.0, err / full) ** curve
+    size_scale = self._align_size_scale(height_ratio)
+    span = self._settings.max_spin_axis - self._settings.min_spin_axis
+    base_ceiling = self._settings.min_spin_axis + t * span
+    ceiling = max(1, min(
       self._settings.max_spin_axis,
-      t,
-      1.0,
-    )
-    ceiling = min(
-      self._settings.max_spin_axis,
-      max(floor, int(ceiling * lead)),
-    )
-    damped = (
-      horizontal_error * self._settings.spin_gain
-      + self._velocity_x * self._settings.spin_damping * lead
-    )
-    spin = self._drive_axis(damped, floor, ceiling)
-    return self._settings.spin_axis_sign * spin
+      int(base_ceiling * size_scale),
+    ))
+    raw = int(horizontal_error * self._settings.spin_gain * size_scale)
+    magnitude = min(ceiling, abs(raw))
+    if magnitude <= 0:
+      return 0
+    # Breakaway floor only once clearly off-center (avoids near-center pump).
+    if t >= 0.35:
+      magnitude = max(self._settings.min_spin_axis, magnitude)
+    sign = 1 if horizontal_error > 0 else -1
+    return self._settings.spin_axis_sign * sign * magnitude
 
-  def _lateral_spin_scale(self) -> float:
-    """1.0 idle → up to 1+boost when lateral image velocity is high."""
-    threshold = max(0.05, self._settings.exit_velocity_threshold)
-    boost = self._settings.align_spin_velocity_boost
-    # ponytail: linear lead; upgrade = Kalman / constant-velocity predictor.
-    return 1.0 + min(boost, abs(self._velocity_x) / (threshold * 2.0))
+  def _align_size_scale(self, height_ratio: float) -> float:
+    """Map blob height to spin urgency: far < 1, formation ≈ 1, close > 1.
+
+    Bearing for a given X error does not depend on distance, but a near ball
+    sweeps the FOV faster in image space — so we yaw harder when large.
+    """
+    ref = max(0.05, self._settings.target_height_ratio)
+    # ponytail: linear in height/ref; upgrade = true range from depth/diameter.
+    return max(0.75, min(1.55, height_ratio / ref))
 
   def _retreat_command_y(self, y_ratio: float) -> BallFollowCommand:
     """Reverse from Y error (or emergency bumper)."""
@@ -393,7 +403,7 @@ class BallFollowPolicy:
     self._phase_started_ms = now_ms
 
   def _exit_direction_sign(self) -> int:
-    """Choose search spin from the last known ball motion or image side."""
+    """Search spin from last free-motion velocity, else last image side."""
     center = self._settings.image_center_x_ratio
     if abs(self._velocity_x) >= self._settings.exit_velocity_threshold:
       direction = 1 if self._velocity_x > 0 else -1

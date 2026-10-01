@@ -135,12 +135,48 @@ def test_align_while_high_creeps_forward() -> None:
 
 
 def test_far_from_center_spins_harder_than_near() -> None:
-  """Larger X offset → stronger spin (adaptive to distance from crosshair)."""
+  """Larger X offset → stronger spin (position-only align)."""
   policy = BallFollowPolicy(_settings())
   near = policy.decide(_obs(0, x_ratio=0.62, y_ratio=0.50), 0)
   far = policy.decide(_obs(50, x_ratio=0.88, y_ratio=0.50), 50)
   assert near.reason == "align" and far.reason == "align"
   assert abs(far.spin) > abs(near.spin)
+
+
+def test_closer_ball_spins_harder_than_far_ball() -> None:
+  """Same X error: larger blob (closer) → stronger yaw than a tiny far blob."""
+  policy = BallFollowPolicy(
+    _settings(target_height_ratio=0.22, align_spin_curve=1.15, align_spin_full_error=0.20),
+  )
+  far = policy.decide(_obs(0, x_ratio=0.78, y_ratio=0.45, height_ratio=0.10), 0)
+  close = policy.decide(_obs(50, x_ratio=0.78, y_ratio=0.45, height_ratio=0.32), 50)
+  assert far.reason == "align" and close.reason == "align"
+  assert abs(close.spin) > abs(far.spin)
+
+
+def test_align_ignores_image_velocity() -> None:
+  """Same X error + size → same spin whether the blob slid fast or slow."""
+  policy = BallFollowPolicy(_settings(align_spin_curve=1.15))
+  policy.decide(_obs(0, x_ratio=0.50, y_ratio=0.50, height_ratio=0.22), 0)
+  slow = policy.decide(_obs(200, x_ratio=0.70, y_ratio=0.50, height_ratio=0.22), 200)
+  policy2 = BallFollowPolicy(_settings(align_spin_curve=1.15))
+  policy2.decide(_obs(0, x_ratio=0.20, y_ratio=0.50, height_ratio=0.22), 0)
+  fast = policy2.decide(_obs(40, x_ratio=0.70, y_ratio=0.50, height_ratio=0.22), 40)
+  assert slow.reason == "align" and fast.reason == "align"
+  assert abs(slow.spin) == abs(fast.spin)
+
+
+def test_exit_search_uses_last_free_motion_velocity() -> None:
+  """Velocity sampled while not spinning still picks search direction on loss."""
+  policy = BallFollowPolicy(
+    _settings(lost_search_ms=2000, search_retreat_ms=500, exit_velocity_threshold=0.05),
+  )
+  # Centered → no spin → next frame may update free-motion velocity.
+  policy.decide(_obs(0, x_ratio=0.50, y_ratio=0.40), 0)
+  policy.decide(_obs(50, x_ratio=0.78, y_ratio=0.40), 50)
+  assert policy._velocity_x > 0
+  policy.decide(None, 60)
+  assert policy._search_spin_sign == policy._settings.spin_axis_sign * 1
 
 
 def test_far_approach_faster_than_near_retreat() -> None:
@@ -155,18 +191,3 @@ def test_far_approach_faster_than_near_retreat() -> None:
   assert close.forward > 0
   assert abs(close.forward) < abs(far.forward)
   assert abs(close.forward) <= 2800
-
-
-def test_fast_lateral_velocity_boosts_spin() -> None:
-  """A fast sideways slide raises align spin vs a static off-center ball."""
-  policy = BallFollowPolicy(_settings())
-  policy.decide(_obs(0, x_ratio=0.50, y_ratio=0.50), 0)
-  slow = policy.decide(_obs(100, x_ratio=0.70, y_ratio=0.50), 100)
-  assert slow.reason == "align"
-  assert slow.spin != 0
-
-  policy2 = BallFollowPolicy(_settings())
-  policy2.decide(_obs(0, x_ratio=0.20, y_ratio=0.50), 0)
-  fast = policy2.decide(_obs(50, x_ratio=0.85, y_ratio=0.50), 50)
-  assert fast.reason == "align"
-  assert abs(fast.spin) >= abs(slow.spin)

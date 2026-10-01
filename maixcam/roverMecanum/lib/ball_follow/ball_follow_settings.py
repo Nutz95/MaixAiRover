@@ -153,11 +153,11 @@ class BallFollowSettings:
     self.retreat_curve = max(0.2, min(3.0, as_float(follow, "retreat_curve", 1.6)))
     self.retreat_soft_cap_ratio = self._ratio(follow, "retreat_soft_cap_ratio", 0.65)
     self.align_creep_divisor = max(1, min(8, as_int(follow, "align_creep_divisor", 2)))
-    self.align_spin_full_error = self._ratio(follow, "align_spin_full_error", 0.22)
-    # <1 ease-out: medium X error already near full spin (tracks fast slides).
-    self.align_spin_curve = max(0.2, min(3.0, as_float(follow, "align_spin_curve", 0.55)))
+    self.align_spin_full_error = self._ratio(follow, "align_spin_full_error", 0.28)
+    # ≥1 ease-in for align (soft near center). Values <1 are clamped up in policy.
+    self.align_spin_curve = max(0.2, min(3.0, as_float(follow, "align_spin_curve", 1.25)))
     self.align_spin_velocity_boost = max(
-      0.0, min(3.0, as_float(follow, "align_spin_velocity_boost", 1.5)),
+      0.0, min(4.0, as_float(follow, "align_spin_velocity_boost", 0.0)),
     )
     self.compass_fix_spin_axis = max(
       1, min(AXIS_MAX, as_int(follow, "compass_fix_spin_axis", 5000)),

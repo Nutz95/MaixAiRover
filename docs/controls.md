@@ -23,7 +23,7 @@ Strafe comes from `trigger_diff` = RT − LT (both pressed → cancel). Config: 
 
 When enabled (View), sticks are overridden: vision drives `forward` + `spin` only via the active backend (`set_car_motion` on Yahboom). Stick/trigger gauges hide while following; a colour LED (grey=manual, green/red=follow) shows the active mode.
 
-**Follow = hold a formation.** Spin to center X and servo forward/back on image **Y** together. Setpoint ``target_center_y_ratio`` ≈ **0.50** (mid-frame): ball too high → approach, too low → retreat, in a ±``target_y_tolerance_ratio`` deadzone → stop. Spin scales with X error (`align_spin_curve` ease-out) and sideways velocity (`align_spin_velocity_boost`) so a ball leaving the crosshair is chased harder. Blob height is safety only (oversized). Hard bottom edge ``too_close_center_y_ratio`` (~0.90) is emergency reverse. Lost at/below the Y setpoint → immediate retreat (no wait).
+**Follow = hold a formation.** Spin from image **X error only** (no blob-velocity feedforward while tracking — ego yaw poisons that signal). Servo forward/back on image **Y** (mid-frame setpoint). Image velocity is sampled only while spin≈0 and used to pick search direction when the ball exits the frame.
 
 Approach soft-cap / search yaw clamps live under `config.json` → `ball_follow`.
 
