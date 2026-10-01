@@ -34,22 +34,63 @@ class YahboomDriveBoard:
     self._parser = YahboomRxParser()
     self._last: ChassisVelocity | None = None
     self._open = False
+    self._last_error = ""
     self._io_lock = threading.Lock()
+
+  @property
+  def is_open(self) -> bool:
+    """True after a successful USB open / init."""
+    return self._open
+
+  @property
+  def last_error(self) -> str:
+    """Last open/init failure text (empty when healthy)."""
+    return self._last_error
 
   def initialize(self, settle_s: float = 0.0) -> None:
     """Open USB serial, select mecanum profile, enable IMU/encoder reports."""
     del settle_s
-    with self._io_lock:
-      self._tx.open()
-      self._open = True
-      self._tx.write(encode_set_car_type(self._config.car_type))
-      self._tx.write(encode_auto_report(True, forever=False))
-      self._pump_rx_unlocked()
-    self.stop()
+    try:
+      with self._io_lock:
+        self._tx.open()
+        self._open = True
+        self._last_error = ""
+        self._tx.write(encode_set_car_type(self._config.car_type))
+        self._tx.write(encode_auto_report(True, forever=False))
+        self._pump_rx_unlocked()
+      self.stop()
+    except Exception as open_error:
+      self._last_error = str(open_error)
+      self._open = False
+      try:
+        self._tx.close()
+      except Exception as close_error:
+        print(f"yahboom init close: {close_error}")
+      raise
+
+  def try_open(self) -> bool:
+    """Re-attempt USB open after a missing CH340 / bad cable.
+
+    Returns True on success. Sets ``last_error`` when it fails.
+    """
+    if self._open:
+      return True
+    try:
+      try:
+        self._tx.close()
+      except Exception as close_error:
+        print(f"yahboom try_open close: {close_error}")
+      self.initialize()
+      return True
+    except Exception as open_error:
+      print(f"yahboom try_open: {open_error}")
+      return False
 
   def set_velocity(self, velocity: ChassisVelocity) -> None:
     """Send closed-loop body velocity (board uses encoders + PID)."""
     with self._io_lock:
+      if not self._open:
+        return
       self._pump_rx_unlocked()
       if self._last is not None and (
         abs(self._last.vx - velocity.vx) < 1e-4
@@ -87,11 +128,15 @@ class YahboomDriveBoard:
   def poll(self) -> None:
     """Pump RX once under the I/O lock (teleop / checklist / DBG)."""
     with self._io_lock:
+      if not self._open:
+        return
       self._pump_rx_unlocked()
 
   def refresh_reports(self) -> None:
     """Re-assert mecanum profile + auto-report (DBG INIT)."""
     with self._io_lock:
+      if not self._open:
+        return
       self._tx.write(encode_set_car_type(self._config.car_type))
       self._tx.write(encode_auto_report(True, forever=False))
       self._pump_rx_unlocked()

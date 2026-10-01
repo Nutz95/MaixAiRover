@@ -13,8 +13,16 @@ class HudComposer:
     self._app = app_ref
 
   def draw(self) -> None:
-    """Draw checklist, DBG, or teleop HUD and call display.show."""
+    """Draw link gate, checklist, DBG, or teleop HUD and call display.show."""
     a = self._app
+    if a._drive_link_open:
+      frame = image.Image(a._disp.width(), a._disp.height(), bg=image.COLOR_BLACK)
+      a._drive_link_panel.draw(
+        frame, a._drive_link_detail, busy=a._drive_link_busy,
+      )
+      a._disp.show(frame)
+      return
+
     with a._checklist_lock:
       checklist_open = a._checklist_open
       checklist = a._checklist

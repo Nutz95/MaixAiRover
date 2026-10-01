@@ -18,6 +18,13 @@ class OverlayTouchRouter:
   def handle(self, action) -> None:
     """Dispatch one latched touch to the active overlay or main HUD."""
     a = self._app
+    if a._drive_link_open:
+      if a._drive_link_panel.retry_rect().contains(action.x, action.y):
+        a.retry_drive_link()
+      elif a._ui.back_rect().contains(action.x, action.y):
+        a._request_exit()
+      return
+
     with a._checklist_lock:
       checklist_open = a._checklist_open
       checklist_ready = a._checklist is not None

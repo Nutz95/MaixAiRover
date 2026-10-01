@@ -59,6 +59,8 @@ On MaixCAM2, `port: "ch340"` (or `""` / `"auto"`) uses **libusb** to the QinHeng
 
 Plug Yahboom **Micro-USB « Connect USB »** into a Maix **USB host** port. DC 6–13 V must be ON.
 
+If the CH340 is missing at app start, the HUD shows a **Yahboom USB** gate with **RETRY** (no crash). Fix the cable/power, tap RETRY; teleop stays blocked until the link opens.
+
 `"drive_backend": "esp"` keeps the Waveshare dual-UART path.
 
 Deploy (overwrite remote config):

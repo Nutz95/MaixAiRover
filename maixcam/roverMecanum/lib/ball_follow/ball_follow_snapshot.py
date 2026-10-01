@@ -17,7 +17,7 @@ class BallFollowSnapshot:
   trajectory: list[BallObservation]
   command: BallFollowCommand
   target_center_x_ratio: float = 0.5
-  target_center_y_ratio: float = 0.60
+  target_center_y_ratio: float = 0.50
 
   @property
   def mode_label(self) -> str:

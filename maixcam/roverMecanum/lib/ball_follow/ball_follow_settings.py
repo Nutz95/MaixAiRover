@@ -59,6 +59,8 @@ class BallFollowSettings:
     "retreat_soft_cap_ratio",
     "align_creep_divisor",
     "align_spin_full_error",
+    "align_spin_curve",
+    "align_spin_velocity_boost",
     "compass_fix_spin_axis",
     "compass_fix_tolerance_deg",
     "compass_fix_timeout_ms",
@@ -103,8 +105,8 @@ class BallFollowSettings:
     self.min_aspect_ratio = max(0.1, as_float(follow, "min_aspect_ratio", 0.55))
     self.max_aspect_ratio = min(4.0, as_float(follow, "max_aspect_ratio", 1.8))
     self.image_center_x_ratio = self._ratio(follow, "image_center_x_ratio", 0.5)
-    # Vertical formation setpoint (~3/5 from top); Y owns approach/retreat.
-    self.target_center_y_ratio = self._ratio(follow, "target_center_y_ratio", 0.60)
+    # Vertical formation setpoint (0.5 = image mid); Y owns approach/retreat.
+    self.target_center_y_ratio = self._ratio(follow, "target_center_y_ratio", 0.50)
     self.target_y_tolerance_ratio = self._ratio(follow, "target_y_tolerance_ratio", 0.06)
     self.target_height_ratio = self._ratio(follow, "target_height_ratio", 0.22)
     self.target_tolerance_ratio = self._ratio(follow, "target_tolerance_ratio", 0.07)
@@ -151,7 +153,12 @@ class BallFollowSettings:
     self.retreat_curve = max(0.2, min(3.0, as_float(follow, "retreat_curve", 1.6)))
     self.retreat_soft_cap_ratio = self._ratio(follow, "retreat_soft_cap_ratio", 0.65)
     self.align_creep_divisor = max(1, min(8, as_int(follow, "align_creep_divisor", 2)))
-    self.align_spin_full_error = self._ratio(follow, "align_spin_full_error", 0.40)
+    self.align_spin_full_error = self._ratio(follow, "align_spin_full_error", 0.22)
+    # <1 ease-out: medium X error already near full spin (tracks fast slides).
+    self.align_spin_curve = max(0.2, min(3.0, as_float(follow, "align_spin_curve", 0.55)))
+    self.align_spin_velocity_boost = max(
+      0.0, min(3.0, as_float(follow, "align_spin_velocity_boost", 1.5)),
+    )
     self.compass_fix_spin_axis = max(
       1, min(AXIS_MAX, as_int(follow, "compass_fix_spin_axis", 5000)),
     )

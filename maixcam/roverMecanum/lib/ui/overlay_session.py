@@ -17,10 +17,11 @@ class OverlaySession:
     a = self._app
     snap = a._xbox.snapshot()
     if snap.connected and not a._was_connected:
-      self.open_checklist()
-      threading.Thread(
-        target=self.run_peripheral_checklist, daemon=True, name="periph-check",
-      ).start()
+      if not a._drive_link_open:
+        self.open_checklist()
+        threading.Thread(
+          target=self.run_peripheral_checklist, daemon=True, name="periph-check",
+        ).start()
     if not snap.connected and a._was_connected:
       self.close_checklist()
       self.close_debug()

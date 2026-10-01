@@ -23,6 +23,7 @@ from lib.input.teleop_control_thread import TeleopControlThread
 from lib.input.xbox_input_service import XboxInputService
 from lib.ui.checklist_panel import ChecklistPanel
 from lib.ui.debug_panel import DebugPanel
+from lib.ui.drive_link_panel import DriveLinkPanel
 from lib.ui.hud_composer import HudComposer
 from lib.ui.hud_instruments import HudInstruments
 from lib.ui.overlay_session import OverlaySession
@@ -51,6 +52,7 @@ class XboxRoverApp:
     self._disp = display.Display()
     self._ui = UiDrawer(self._disp.width(), self._disp.height())
     self._checklist_panel = ChecklistPanel(self._disp.width(), self._disp.height())
+    self._drive_link_panel = DriveLinkPanel(self._disp.width(), self._disp.height())
     self._debug_panel = DebugPanel(self._disp.width(), self._disp.height())
     self._yahboom_debug_panel = YahboomDebugPanel(
       self._disp.width(), self._disp.height(),
@@ -62,6 +64,16 @@ class XboxRoverApp:
     self._yahboom_debug = stack.yahboom_debug
     self._debug = stack.esp_front_debug
     self._rear_debug = stack.esp_rear_debug
+    self._drive_link_open = False
+    self._drive_link_busy = False
+    self._drive_link_detail = ""
+    if self._yahboom_board is not None and not self._yahboom_board.is_open:
+      self._drive_link_open = True
+      self._drive_link_detail = (
+        self._yahboom_board.last_error
+        or "CH340 1a86:7523 not found"
+      )
+      print(f"drive link: waiting for USB ({self._drive_link_detail})")
     self._maix_battery = MaixBatteryReader()
     print(BluetoothInstaller().install())
     self._xbox = XboxInputService(self._config_store)
@@ -258,6 +270,8 @@ class XboxRoverApp:
     self._touch_router.handle(action)
 
   def _send_drive(self, drive: DriveOutput) -> None:
+    if self._drive_link_open:
+      return
     with self._checklist_lock:
       if self._checklist_open:
         return
@@ -269,3 +283,23 @@ class XboxRoverApp:
       self._ball.dispatch(drive)
     except Exception as exc:
       print(f"drive: {type(exc).__name__}: {exc}")
+
+  def retry_drive_link(self) -> None:
+    """User tapped RETRY on the USB gate — reopen Yahboom CH340 if present."""
+    if self._yahboom_board is None or self._drive_link_busy:
+      return
+    self._drive_link_busy = True
+    self._drive_link_detail = "Connecting…"
+    try:
+      ok = self._yahboom_board.try_open()
+      if ok:
+        self._drive_link_open = False
+        self._drive_link_detail = ""
+        print("drive link: Yahboom USB open")
+      else:
+        self._drive_link_detail = (
+          self._yahboom_board.last_error or "USB still missing"
+        )
+        print(f"drive link: retry failed ({self._drive_link_detail})")
+    finally:
+      self._drive_link_busy = False

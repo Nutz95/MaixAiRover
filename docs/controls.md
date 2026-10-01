@@ -21,13 +21,17 @@ Strafe comes from `trigger_diff` = RT − LT (both pressed → cancel). Config: 
 
 ## Ball-follow
 
-When enabled (View), sticks are overridden: vision drives `forward` + `spin` only via the active backend (`set_car_motion` on Yahboom). Stick/trigger gauges hide while following; a colour LED (grey=manual, green/red=follow) shows the active mode. Lost ball: wait → encoder ~360° spin → IMU compass fix → pause → retreat → repeat.
+When enabled (View), sticks are overridden: vision drives `forward` + `spin` only via the active backend (`set_car_motion` on Yahboom). Stick/trigger gauges hide while following; a colour LED (grey=manual, green/red=follow) shows the active mode.
+
+**Follow = hold a formation.** Spin to center X and servo forward/back on image **Y** together. Setpoint ``target_center_y_ratio`` ≈ **0.50** (mid-frame): ball too high → approach, too low → retreat, in a ±``target_y_tolerance_ratio`` deadzone → stop. Spin scales with X error (`align_spin_curve` ease-out) and sideways velocity (`align_spin_velocity_boost`) so a ball leaving the crosshair is chased harder. Blob height is safety only (oversized). Hard bottom edge ``too_close_center_y_ratio`` (~0.90) is emergency reverse. Lost at/below the Y setpoint → immediate retreat (no wait).
+
+Approach soft-cap / search yaw clamps live under `config.json` → `ball_follow`.
 
 LAB blob colours live only under `ball_follow.colors` in `config.json` (and `color_order` for Start cycling). Encoder closed-loop allows low `min_*_axis` trim (no Keyestudio-style high breakaway).
 
 Optional `ball_follow.depth_fusion_enabled`: DepthAnything runs **async** (one frame in flight; HUD stays fluid). Ball detect/track/drive are independent — depth busy only freezes the last distance band. `depth_view`: `blend` / `depth` / `rgb`. `depth_interval_ms` can be low (e.g. 50) in `depth` mode. `depth_contour_thickness` dilates Canny edges (1–4). Display only — approach distance still uses blob size, not depth.
 
-ils en ont pas bcp ## Mecanum body velocities (Yahboom `set_car_motion`)
+## Mecanum body velocities (Yahboom `set_car_motion`)
 
 | Axis | Meaning | How you get it |
 |------|---------|----------------|

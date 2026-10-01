@@ -123,6 +123,7 @@ files:
   - lib\ui\__init__.py
   - lib\ui\checklist_panel.py
   - lib\ui\debug_panel.py
+  - lib\ui\drive_link_panel.py
   - lib\ui\hud_composer.py
   - lib\ui\hud_instruments.py
   - lib\ui\overlay_session.py

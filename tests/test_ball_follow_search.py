@@ -31,9 +31,10 @@ def _settings(**overrides):
 
 def _obs(now_ms: int, x_ratio: float = 0.5) -> BallObservation:
   width = 320
+  # Above mid-frame setpoint so loss uses lost_search_ms (not instant retreat).
   return BallObservation(
     center_x=int(x_ratio * width),
-    center_y=120,
+    center_y=60,
     width=40,
     height=40,
     area=1600,
