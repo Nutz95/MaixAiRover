@@ -26,7 +26,7 @@ Shipable MaixApp: `maixcam/roverMecanum/`. ESP firmware: `esp32/rover_coordinato
 These override ponytail “fewest files” when they conflict. Ponytail still applies to **features** (YAGNI).
 
 1. **SOLID** — one responsibility per class; depend on ports/interfaces, not concrete hardware.
-2. **1 class = 1 file.**
+2. **1 class = 1 file** (also `tests/` and `tools/yahboom_debug/` — fakes live in their own modules).
 3. **Each file &lt; 400 lines** of code.
 4. **Each class &lt; 30 methods.**
 5. **Every public class and public method has a docstring.**

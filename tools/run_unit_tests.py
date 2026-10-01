@@ -19,7 +19,9 @@ def main() -> int:
   root = pathlib.Path(__file__).resolve().parents[1]
   tests_dir = root / "tests"
   app = root / "maixcam" / "roverMecanum"
+  # Same roots as tests/conftest.py — fakes live under tests/.
   sys.path.insert(0, str(app))
+  sys.path.insert(0, str(tests_dir))
 
   failures = 0
   ran = 0

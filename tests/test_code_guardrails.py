@@ -1,4 +1,4 @@
-"""Fail CI when lib/ violates MaixAiRover quality guardrails."""
+"""Fail CI when lib/ / tools/ / tests/ violate MaixAiRover quality guardrails."""
 
 from __future__ import annotations
 
@@ -13,15 +13,16 @@ LIB_DIR = os.path.join(
 TOOLS_YAHBOOM_DEBUG = os.path.join(
   os.path.dirname(__file__), "..", "tools", "yahboom_debug",
 )
+TESTS_DIR = os.path.dirname(__file__)
 CONFIG_JSON = os.path.join(
   os.path.dirname(__file__), "..", "maixcam", "roverMecanum", "config.json",
 )
 
 
 def _iter_guarded_py() -> list[str]:
-  """Shipable lib/ plus host debug tools that must stay 1-class-per-file."""
+  """Shipable lib/, host debug tools, and tests (1 class = 1 file)."""
   paths = []
-  for root in (LIB_DIR, TOOLS_YAHBOOM_DEBUG):
+  for root in (LIB_DIR, TOOLS_YAHBOOM_DEBUG, TESTS_DIR):
     abs_root = os.path.abspath(root)
     if not os.path.isdir(abs_root):
       continue
@@ -54,6 +55,22 @@ def test_one_top_level_class_per_file() -> None:
       rel = os.path.relpath(path, os.path.dirname(__file__))
       violations.append(f"{rel}: {len(classes)} classes ({names})")
   assert not violations, "1 class = 1 file:\n  " + "\n  ".join(violations)
+
+
+def test_no_nested_classes() -> None:
+  """No class nested inside another class (lib, tools, or tests)."""
+  violations = []
+  for path in _iter_guarded_py():
+    with open(path, encoding="utf-8") as handle:
+      tree = ast.parse(handle.read(), filename=path)
+    for node in ast.walk(tree):
+      if not isinstance(node, ast.ClassDef):
+        continue
+      for child in node.body:
+        if isinstance(child, ast.ClassDef):
+          rel = os.path.relpath(path, os.path.dirname(__file__))
+          violations.append(f"{rel}: {node.name}.{child.name}")
+  assert not violations, "no nested classes:\n  " + "\n  ".join(violations)
 
 
 def test_no_tuple_annotations() -> None:
@@ -157,7 +174,6 @@ def test_no_silent_except_pass() -> None:
       )
       if not is_silent_exit:
         continue
-      # Allow bare return only if a prior statement logs.
       logged = False
       for stmt in body:
         if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call):
@@ -186,6 +202,7 @@ def test_shipped_drive_backend_valid() -> None:
 
 def main() -> None:
   test_one_top_level_class_per_file()
+  test_no_nested_classes()
   test_no_tuple_annotations()
   test_no_dict_list_return_annotations()
   test_no_getattr_setattr()

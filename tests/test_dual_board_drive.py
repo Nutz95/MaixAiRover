@@ -2,48 +2,17 @@
 
 from __future__ import annotations
 
-import os
-import sys
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "maixcam", "roverMecanum"))
-
+from fake_pair_drive_front import FakePairDriveFront
+from fake_pair_drive_rear import FakePairDriveRear
 from lib.motion.dual_board_drive_port import DualBoardDrivePort
-from lib.motion.encoder_pair import EncoderPair
 from lib.esp.esp_link_config import EspLinkConfig
 from lib.esp.esp_pair_drive_board import EspPairDriveBoard
 from lib.motion.null_rear_drive_board import NullRearDriveBoard
 from lib.motion.wheel_speeds import WheelSpeeds
 
 
-class _FakeFront:
-  def __init__(self) -> None:
-    self.pairs: list[tuple[int, int]] = []
-    self.stopped = 0
-
-  def initialize(self, settle_s: float = 0.0) -> None:
-    del settle_s
-
-  def set_pair(self, left: int, right: int) -> None:
-    self.pairs.append((left, right))
-
-  def stop(self) -> None:
-    self.stopped += 1
-    self.pairs.append((0, 0))
-
-  def read_pair_encoders(self) -> EncoderPair:
-    return EncoderPair(left=1, right=2)
-
-  def clear_encoders(self) -> None:
-    return
-
-
-class _FakeRear(_FakeFront):
-  def read_pair_encoders(self) -> EncoderPair:
-    return EncoderPair(left=3, right=4)
-
-
 def test_dual_board_splits_front_rear() -> None:
-  front = _FakeFront()
+  front = FakePairDriveFront()
   rear = NullRearDriveBoard()
   port = DualBoardDrivePort(front, rear)
   port.set_wheel_speeds(
@@ -57,8 +26,8 @@ def test_dual_board_splits_front_rear() -> None:
 
 
 def test_dual_board_live_rear() -> None:
-  front = _FakeFront()
-  rear = _FakeRear()
+  front = FakePairDriveFront()
+  rear = FakePairDriveRear()
   port = DualBoardDrivePort(front, rear)
   port.set_wheel_speeds(
     WheelSpeeds(front_left=10, front_right=11, rear_left=12, rear_right=13)
@@ -89,7 +58,7 @@ def test_esp_link_config_legacy_and_nested() -> None:
 
 
 def test_pair_board_stop_burst() -> None:
-  sent: list[tuple[int, int]] = []
+  sent = []
 
   def set_drive(left: int, right: int) -> None:
     sent.append((left, right))
