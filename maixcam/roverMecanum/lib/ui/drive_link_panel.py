@@ -40,7 +40,7 @@ class DriveLinkPanel:
     muted = image.Color.from_rgb(180, 180, 180)
     warn = image.Color.from_rgb(230, 160, 60)
     y = 110
-    img.draw_string(32, y, "USB host / CH340 not ready", warn, scale=1.35)
+    img.draw_string(32, y, "USB link missing / lost", warn, scale=1.35)
     y += 48
     img.draw_string(32, y, "Check Micro-USB data cable", muted, scale=1.15)
     y += 36

@@ -124,10 +124,11 @@ class Ch340UsbSerial:
     rc = lib.libusb_bulk_transfer(
       self._handle, _EP_IN, buf, max_len, byref(transferred), self._timeout_ms,
     )
+    # LIBUSB_ERROR_TIMEOUT = -7 — normal empty poll.
     if rc == -7:
       return b""
     if rc != 0 and transferred.value == 0:
-      return b""
+      raise RuntimeError(f"CH340 bulk IN failed rc={rc}")
     return bytes(buf[: transferred.value])
 
   def _ctrl_out(self, request: int, value: int, index: int) -> None:

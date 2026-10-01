@@ -91,22 +91,25 @@ class YahboomDriveBoard:
     with self._io_lock:
       if not self._open:
         return
-      self._pump_rx_unlocked()
-      if self._last is not None and (
-        abs(self._last.vx - velocity.vx) < 1e-4
-        and abs(self._last.vy - velocity.vy) < 1e-4
-        and abs(self._last.vz - velocity.vz) < 1e-4
-      ):
-        return
-      self._tx.write(
-        encode_car_motion(
-          self._config.car_type,
-          velocity.vx,
-          velocity.vy,
-          velocity.vz,
+      try:
+        self._pump_rx_unlocked()
+        if self._last is not None and (
+          abs(self._last.vx - velocity.vx) < 1e-4
+          and abs(self._last.vy - velocity.vy) < 1e-4
+          and abs(self._last.vz - velocity.vz) < 1e-4
+        ):
+          return
+        self._tx.write(
+          encode_car_motion(
+            self._config.car_type,
+            velocity.vx,
+            velocity.vy,
+            velocity.vz,
+          )
         )
-      )
-      self._last = velocity
+        self._last = velocity
+      except Exception as io_error:
+        self._drop_link_unlocked(str(io_error))
 
   def stop(self) -> None:
     """Zero chassis velocity."""
@@ -130,16 +133,22 @@ class YahboomDriveBoard:
     with self._io_lock:
       if not self._open:
         return
-      self._pump_rx_unlocked()
+      try:
+        self._pump_rx_unlocked()
+      except Exception as io_error:
+        self._drop_link_unlocked(str(io_error))
 
   def refresh_reports(self) -> None:
     """Re-assert mecanum profile + auto-report (DBG INIT)."""
     with self._io_lock:
       if not self._open:
         return
-      self._tx.write(encode_set_car_type(self._config.car_type))
-      self._tx.write(encode_auto_report(True, forever=False))
-      self._pump_rx_unlocked()
+      try:
+        self._tx.write(encode_set_car_type(self._config.car_type))
+        self._tx.write(encode_auto_report(True, forever=False))
+        self._pump_rx_unlocked()
+      except Exception as io_error:
+        self._drop_link_unlocked(str(io_error))
 
   def has_encoder_report(self) -> bool:
     """True once at least one encoder auto-report frame was parsed."""
@@ -164,14 +173,25 @@ class YahboomDriveBoard:
     except Exception as swallowed:
       print(f"yahboom_drive_board.py: {swallowed}")
     with self._io_lock:
+      self._drop_link_unlocked("")
+
+  def _drop_link_unlocked(self, reason: str) -> None:
+    """Mark USB dead and close transport (caller holds ``_io_lock``)."""
+    was_open = self._open
+    if reason:
+      self._last_error = reason
+    elif not self._last_error:
+      self._last_error = "USB link lost"
+    self._open = False
+    self._last = None
+    try:
       self._tx.close()
-      self._open = False
+    except Exception as close_error:
+      print(f"yahboom drop close: {close_error}")
+    if was_open and reason:
+      print(f"yahboom: link lost ({self._last_error})")
 
   def _pump_rx_unlocked(self) -> None:
-    try:
-      chunk = self._tx.read(512)
-    except Exception as read_error:
-      print(f"yahboom: rx: {read_error}")
-      return
+    chunk = self._tx.read(512)
     if chunk:
       self._parser.feed(chunk)

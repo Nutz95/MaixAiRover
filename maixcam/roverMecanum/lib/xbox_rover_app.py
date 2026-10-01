@@ -143,6 +143,7 @@ class XboxRoverApp:
         self._read_touch()
         self._handle_touch()
         self._overlays.on_connection_change()
+        self._sync_drive_link_gate()
         now = time.ticks_ms()
         if now - last_draw >= self._display_interval_ms:
           self._hud.draw()
@@ -303,3 +304,17 @@ class XboxRoverApp:
         print(f"drive link: retry failed ({self._drive_link_detail})")
     finally:
       self._drive_link_busy = False
+
+  def _sync_drive_link_gate(self) -> None:
+    """Raise the USB gate if the Yahboom link drops mid-session."""
+    board = self._yahboom_board
+    if board is None or board.is_open or self._drive_link_busy:
+      return
+    detail = board.last_error or "USB link lost"
+    if not self._drive_link_open:
+      self._drive_link_open = True
+      self._drive_link_detail = detail
+      print(f"drive link: lost — showing RETRY ({detail})")
+      return
+    if detail and detail != self._drive_link_detail:
+      self._drive_link_detail = detail
