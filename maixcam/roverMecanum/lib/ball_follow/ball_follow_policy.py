@@ -146,11 +146,16 @@ class BallFollowPolicy:
     return 0, "target_distance"
 
   def _align_spin(self, horizontal_error: float, height_ratio: float) -> int:
-    """Proportional spin from X error; height scales urgency (close → faster)."""
+    """Proportional spin from X error; height scales urgency (close → faster).
+
+    ``align_spin_curve`` is the power on normalized error ``t = (err/full)^curve``:
+    - ``curve < 1`` (e.g. 0.55): firm just outside the deadzone (catch crosses).
+    - ``curve = 1``: linear ceiling ramp.
+    - ``curve > 1``: soft near center (old ease-in — lagged on center passes).
+    """
     err = abs(horizontal_error)
     full = max(1e-6, self._settings.align_spin_full_error)
-    # Ease-in (≥1): soft near center, firm toward the frame edge.
-    curve = max(1.0, self._settings.align_spin_curve)
+    curve = max(0.2, min(3.0, self._settings.align_spin_curve))
     t = min(1.0, err / full) ** curve
     size_scale = self._align_size_scale(height_ratio)
     span = self._settings.max_spin_axis - self._settings.min_spin_axis
@@ -163,8 +168,8 @@ class BallFollowPolicy:
     magnitude = min(ceiling, abs(raw))
     if magnitude <= 0:
       return 0
-    # Breakaway floor only once clearly off-center (avoids near-center pump).
-    if t >= 0.35:
+    # Soft floor once authority is already on — not a near-center bang kick.
+    if t >= 0.25:
       magnitude = max(self._settings.min_spin_axis, magnitude)
     sign = 1 if horizontal_error > 0 else -1
     return self._settings.spin_axis_sign * sign * magnitude

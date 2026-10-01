@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 300" role="img" aria-label="Forward retreat authority vs ball Y">
+  <rect width="640" height="300" fill="#0f1419"/>
+  <text x="16" y="24" fill="#9aa4af" font-family="ui-sans-serif,system-ui,sans-serif" font-size="13">Y authority (approach up, retreat down) - curve 0.40 / tol +/-0.03</text>
+  <g transform="translate(48,40)">
+    <rect width="544" height="200" fill="#161c22" stroke="#2a3340"/>
+    <line x1="0" y1="100.0" x2="544" y2="100.0" stroke="#2a3340"/>
+    <line x1="0" y1="0" x2="544" y2="0" stroke="#2a3340"/>
+    <line x1="0" y1="200" x2="544" y2="200" stroke="#2a3340"/>
+    <rect x="255.68" y="0" width="32.64" height="200" fill="#3d4450" opacity="0.35"/>
+    <line x1="272.0" y1="0" x2="272.0" y2="200" stroke="#c5ced6" stroke-dasharray="6 4"/>
+    <path fill="none" stroke="#5ec8a0" stroke-width="2.5" d="M 0.0,0.0 L 13.6,2.0 L 27.2,4.1 L 40.8,6.3 L 54.4,8.5 L 68.0,10.9 L 81.6,13.3 L 95.2,15.8 L 108.8,18.5 L 122.4,21.3 L 136.0,24.2 L 149.6,27.3 L 163.2,30.7 L 176.8,34.3 L 190.4,38.2 L 204.0,42.6 L 217.6,47.5 L 231.2,53.2 L 244.8,60.2 L 258.4,100.0 L 272.0,100.0 L 285.6,100.0 L 299.2,143.5 L 312.8,151.2 L 326.4,157.4 L 340.0,162.8 L 353.6,167.5 L 367.2,171.8 L 380.8,175.8 L 394.4,179.4 L 408.0,182.9 L 421.6,186.1 L 435.2,189.1 L 448.8,192.0 L 462.4,194.8 L 476.0,197.5 L 489.6,200.0 L 503.2,200.0 L 516.8,200.0 L 530.4,200.0 L 544.0,200.0"/>
+    <text x="-8" y="8" fill="#6b7680" font-size="11" text-anchor="end" font-family="ui-sans-serif,system-ui,sans-serif">+app</text>
+    <text x="-8" y="104.0" fill="#6b7680" font-size="11" text-anchor="end" font-family="ui-sans-serif,system-ui,sans-serif">0</text>
+    <text x="-8" y="200" fill="#6b7680" font-size="11" text-anchor="end" font-family="ui-sans-serif,system-ui,sans-serif">-ret</text>
+    <text x="16" y="218" fill="#6b7680" font-size="11" font-family="ui-sans-serif,system-ui,sans-serif">y=0 top</text>
+    <text x="272.0" y="218" fill="#c5ced6" font-size="11" text-anchor="middle" font-family="ui-sans-serif,system-ui,sans-serif">y=0.5</text>
+    <text x="528" y="218" fill="#6b7680" font-size="11" text-anchor="end" font-family="ui-sans-serif,system-ui,sans-serif">y=1 bottom</text>
+  </g>
+  <g font-family="ui-sans-serif,system-ui,sans-serif" font-size="12">
+    <line x1="48" y1="278" x2="78" y2="278" stroke="#5ec8a0" stroke-width="2.5"/>
+    <text x="86" y="282" fill="#c5ced6">approach_curve = retreat_curve = 0.40</text>
+  </g>
+</svg>

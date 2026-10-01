@@ -92,12 +92,37 @@ def test_y_hold_band_stops() -> None:
 
 def test_y_hold_hysteresis_avoids_pump() -> None:
   """Once holding, small Y noise inside exit band stays stopped."""
-  policy = BallFollowPolicy(_settings())
+  policy = BallFollowPolicy(_settings(target_y_tolerance_ratio=0.03))
   assert policy.decide(_obs(0, y_ratio=0.50), 0).reason == "target_distance"
-  # exit band = 0.50 ± 0.12 → 0.42 still holds
-  still = policy.decide(_obs(50, y_ratio=0.42), 50)
+  # exit band = 0.50 ± 0.06 → 0.45 still holds
+  still = policy.decide(_obs(50, y_ratio=0.45), 50)
   assert still.reason == "target_distance"
   assert still.forward == 0
+
+
+def test_aggressive_retreat_curve_backs_harder_than_ease_in() -> None:
+  """curve 0.40 retreats harder than ease-in 1.2 just below the Y band."""
+  soft = BallFollowPolicy(
+    _settings(
+      target_y_tolerance_ratio=0.03,
+      retreat_curve=1.2,
+      max_retreat_axis=10000,
+      retreat_soft_cap_ratio=1.0,
+    ),
+  )
+  firm = BallFollowPolicy(
+    _settings(
+      target_y_tolerance_ratio=0.03,
+      retreat_curve=0.40,
+      max_retreat_axis=10000,
+      retreat_soft_cap_ratio=1.0,
+    ),
+  )
+  # Just below enter_hi (0.53): soft ease-in stays mild; 0.40 climbs early.
+  soft_cmd = soft.decide(_obs(0, y_ratio=0.58, height_ratio=0.22), 0)
+  firm_cmd = firm.decide(_obs(0, y_ratio=0.58, height_ratio=0.22), 0)
+  assert soft_cmd.reason == "too_close" and firm_cmd.reason == "too_close"
+  assert abs(firm_cmd.forward) > abs(soft_cmd.forward)
 
 
 def test_hard_bumper_y_triggers_retreat() -> None:
@@ -143,10 +168,25 @@ def test_far_from_center_spins_harder_than_near() -> None:
   assert abs(far.spin) > abs(near.spin)
 
 
+def test_aggressive_curve_spins_harder_near_center_than_ease_in() -> None:
+  """curve < 1 responds earlier than ease-in (>1) at the same small X error."""
+  soft = BallFollowPolicy(
+    _settings(align_spin_curve=1.15, align_spin_full_error=0.22, horizontal_deadzone=0.04),
+  )
+  firm = BallFollowPolicy(
+    _settings(align_spin_curve=0.55, align_spin_full_error=0.22, horizontal_deadzone=0.04),
+  )
+  # Just outside deadzone: ease-in stays under the soft floor; 0.55 already climbs.
+  soft_cmd = soft.decide(_obs(0, x_ratio=0.55, y_ratio=0.50, height_ratio=0.22), 0)
+  firm_cmd = firm.decide(_obs(0, x_ratio=0.55, y_ratio=0.50, height_ratio=0.22), 0)
+  assert soft_cmd.reason == "align" and firm_cmd.reason == "align"
+  assert abs(firm_cmd.spin) > abs(soft_cmd.spin)
+
+
 def test_closer_ball_spins_harder_than_far_ball() -> None:
   """Same X error: larger blob (closer) → stronger yaw than a tiny far blob."""
   policy = BallFollowPolicy(
-    _settings(target_height_ratio=0.22, align_spin_curve=1.15, align_spin_full_error=0.20),
+    _settings(target_height_ratio=0.22, align_spin_curve=0.55, align_spin_full_error=0.22),
   )
   far = policy.decide(_obs(0, x_ratio=0.78, y_ratio=0.45, height_ratio=0.10), 0)
   close = policy.decide(_obs(50, x_ratio=0.78, y_ratio=0.45, height_ratio=0.32), 50)
@@ -156,10 +196,10 @@ def test_closer_ball_spins_harder_than_far_ball() -> None:
 
 def test_align_ignores_image_velocity() -> None:
   """Same X error + size → same spin whether the blob slid fast or slow."""
-  policy = BallFollowPolicy(_settings(align_spin_curve=1.15))
+  policy = BallFollowPolicy(_settings(align_spin_curve=0.55))
   policy.decide(_obs(0, x_ratio=0.50, y_ratio=0.50, height_ratio=0.22), 0)
   slow = policy.decide(_obs(200, x_ratio=0.70, y_ratio=0.50, height_ratio=0.22), 200)
-  policy2 = BallFollowPolicy(_settings(align_spin_curve=1.15))
+  policy2 = BallFollowPolicy(_settings(align_spin_curve=0.55))
   policy2.decide(_obs(0, x_ratio=0.20, y_ratio=0.50, height_ratio=0.22), 0)
   fast = policy2.decide(_obs(40, x_ratio=0.70, y_ratio=0.50, height_ratio=0.22), 40)
   assert slow.reason == "align" and fast.reason == "align"

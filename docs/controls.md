@@ -25,6 +25,8 @@ When enabled (View), sticks are overridden: vision drives `forward` + `spin` onl
 
 **Follow = hold a formation.** Spin from image **X error only** (no blob-velocity feedforward while tracking — ego yaw poisons that signal). Servo forward/back on image **Y** (mid-frame setpoint). Image velocity is sampled only while spin≈0 and used to pick search direction when the ball exits the frame.
 
+Align yaw ceiling uses `t = (|x−0.5| / align_spin_full_error) ^ align_spin_curve`. **`curve < 1`** (default `0.55`) is firm just outside `horizontal_deadzone`; `curve > 1` softens the center (lags on center passes). Blob height also scales urgency. See `docs/align_spin_curve.md`.
+
 Approach soft-cap / search yaw clamps live under `config.json` → `ball_follow`.
 
 LAB blob colours live only under `ball_follow.colors` in `config.json` (and `color_order` for Start cycling). Encoder closed-loop allows low `min_*_axis` trim (no Keyestudio-style high breakaway).
