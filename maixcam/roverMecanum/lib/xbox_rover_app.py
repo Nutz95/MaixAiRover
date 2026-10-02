@@ -101,6 +101,7 @@ class XboxRoverApp:
       self._disp.height(),
       self._config,
     )
+    self._ball.set_blend_drive(self._obstacle.blend_drive)
     self._checklist = None
     self._checklist_open = False
     self._checklist_lock = threading.Lock()
@@ -143,6 +144,11 @@ class XboxRoverApp:
   def run(self) -> None:
     """Teleop in background; main thread draws HUD (Maix display API)."""
     self._start_camera()
+    # Auto-reconnect saved Xbox bond so the operator skips the CONNECT tap.
+    try:
+      self._xbox.start_connect()
+    except Exception as connect_error:
+      print(f"startup: auto Xbox connect: {connect_error}")
     self._control.start()
     loop_sleep_ms = max(1, min(8, self._display_interval_ms // 2))
     last_draw = 0
@@ -304,6 +310,7 @@ class XboxRoverApp:
       return
     if self._obstacle is not None:
       self._obstacle.note_drive_command(drive)
+      drive = self._obstacle.blend_drive(drive)
     try:
       self._ball.dispatch(drive)
     except Exception as exc:

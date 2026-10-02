@@ -46,7 +46,9 @@ class OverlayTouchRouter:
         a._overlays.handle_modal_confirm()
       elif panel.skip_rect().contains(action.x, action.y):
         if a._obstacle.skip_calib():
-          if a._camera is not None:
+          if a._camera is not None and (
+            not a._obstacle.is_calib_open() or a._obstacle.uses_live_camera()
+          ):
             a._camera.set_paused(False)
           a._arm_touch_ignore()
       elif a._ui.back_rect().contains(action.x, action.y):
@@ -97,12 +99,4 @@ class OverlayTouchRouter:
       print(f"touch: ball snapshot: {ball_snap_error}")
     if ball_follow_on:
       return
-    if snap.connected and a._ui.debug_rect().contains(action.x, action.y):
-      a._overlays.open_debug()
-      return
-    if snap.connected and a._ui.disconnect_rect().contains(action.x, action.y):
-      a._xbox.request_stop()
-      try:
-        a._rover.send_stop()
-      except OSError as stop_error:
-        print(f"disconnect: send_stop: {stop_error}")
+    # DBG/DISC HUD buttons removed — use Xbox X / B.

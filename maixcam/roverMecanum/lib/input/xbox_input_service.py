@@ -44,6 +44,8 @@ class XboxInputService:
     self._pending_mode_toggle = False
     self._pending_color_toggle = False
     self._pending_modal_confirm = False
+    self._pending_debug_open = False
+    self._pending_debug_close = False
     self._hid_logged = False
     self._pairing.ensure_agent()
 
@@ -89,6 +91,20 @@ class XboxInputService:
       self._pending_modal_confirm = False
       return confirmed
 
+  def consume_debug_open(self) -> bool:
+    """Consume one Xbox X edge to open the debug menu."""
+    with self._lock:
+      opened = self._pending_debug_open
+      self._pending_debug_open = False
+      return opened
+
+  def consume_debug_close(self) -> bool:
+    """Consume one Xbox B edge to leave debug / return to teleop HUD."""
+    with self._lock:
+      closed = self._pending_debug_close
+      self._pending_debug_close = False
+      return closed
+
   def snapshot(self) -> XboxSnapshot:
     """Return an immutable snapshot for the UI and control loop."""
     with self._lock:
@@ -121,6 +137,8 @@ class XboxInputService:
       mode_toggle = reader.state.take_edge(ControllerButton.SELECT)
       color_toggle = reader.state.take_edge(ControllerButton.START)
       modal_confirm = reader.state.take_edge(ControllerButton.A)
+      debug_open = reader.state.take_edge(ControllerButton.X)
+      debug_close = reader.state.take_edge(ControllerButton.B)
       reader.state.pressed_edge.clear()
       with self._lock:
         self.state = live
@@ -135,6 +153,10 @@ class XboxInputService:
           self._pending_color_toggle = True
         if modal_confirm:
           self._pending_modal_confirm = True
+        if debug_open:
+          self._pending_debug_open = True
+        if debug_close:
+          self._pending_debug_close = True
     except OSError as exc:
       if exc.errno in (errno.ENODEV, errno.ENOENT):
         self._on_reader_lost("Controller disconnected")

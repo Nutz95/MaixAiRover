@@ -21,6 +21,7 @@ class DriveDispatcher:
     odometry: EncoderOdometry | None = None,
     get_yaw_deg=None,
     get_encoders=None,
+    blend_drive=None,
   ) -> None:
     """Wire rover, ball controller, optional yaw/encoders, and a frame getter."""
     self._rover = rover
@@ -29,7 +30,12 @@ class DriveDispatcher:
     self._odometry = odometry
     self._get_yaw_deg = get_yaw_deg
     self._get_encoders = get_encoders
+    self._blend_drive = blend_drive
     self._prev_encoders: EncoderCounts | None = None
+
+  def set_blend_drive(self, blend_drive) -> None:
+    """Attach soft avoidance blender (obstacle depth bands)."""
+    self._blend_drive = blend_drive
 
   def dispatch(self, drive: DriveOutput, manual_resume_pending: bool) -> bool:
     """Apply one teleop tick; return updated ``manual_resume_pending``."""
@@ -40,7 +46,17 @@ class DriveDispatcher:
       command = self._ball_follow.update(
         frame, yaw_deg=yaw_deg, encoder_yaw_delta_deg=encoder_delta_deg,
       )
-      self._rover.send_joystick(0, command.forward, command.spin, 0)
+      out = DriveOutput(
+        axis_strafe=0,
+        axis_forward=command.forward,
+        axis_spin=command.spin,
+        axis_pivot=0,
+      )
+      if self._blend_drive is not None:
+        out = self._blend_drive(out)
+      self._rover.send_joystick(
+        out.axis_strafe, out.axis_forward, out.axis_spin, out.axis_pivot,
+      )
       return manual_resume_pending
 
     self._prev_encoders = None

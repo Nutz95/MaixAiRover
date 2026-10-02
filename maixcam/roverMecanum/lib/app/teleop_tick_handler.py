@@ -70,11 +70,13 @@ class TeleopTickHandler:
     """One control-thread iteration of config / ball / speed / sensors."""
     self._apply_rover_config()
     self._handle_modal_confirm()
+    self._handle_debug_buttons()
     if self._xbox.consume_mode_toggle():
       self._ball.toggle_mode()
     if self._xbox.consume_color_toggle():
       self._ball.cycle_color()
     self._handle_speed_bumpers()
+    self._nudge_ground_calib()
     self._refresh_hud_sensors()
     self._tick_obstacle_nav()
 
@@ -92,6 +94,28 @@ class TeleopTickHandler:
     if self._overlays is None:
       return
     self._overlays.handle_modal_confirm()
+
+  def _handle_debug_buttons(self) -> None:
+    if self._overlays is None:
+      return
+    if self._xbox.consume_debug_open():
+      self._overlays.open_debug()
+    if self._xbox.consume_debug_close():
+      self._overlays.close_debug()
+
+  def _nudge_ground_calib(self) -> None:
+    """Left-stick Y moves the ground line while depth ground calib is open."""
+    if self._obstacle is None or not self._obstacle.uses_live_camera():
+      return
+    snap = self._xbox.snapshot()
+    if snap.drive is None:
+      return
+    # axis_forward < 0 = stick forward/up → line higher (smaller ratio).
+    axis = snap.drive.axis_forward
+    if abs(axis) < 4000:
+      return
+    delta = -axis / 32767.0 * 0.006
+    self._obstacle.nudge_ground_line(delta)
 
   def _tick_obstacle_nav(self) -> None:
     if self._obstacle is None:

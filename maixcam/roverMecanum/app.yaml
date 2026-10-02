@@ -121,8 +121,15 @@ files:
   - lib\motion\wheel_drive_port.py
   - lib\motion\wheel_speeds.py
   - lib\obstacle_nav\__init__.py
+  - lib\obstacle_nav\avoidance_arrow_panel.py
+  - lib\obstacle_nav\avoidance_decision.py
+  - lib\obstacle_nav\avoidance_hint.py
+  - lib\obstacle_nav\avoidance_policy.py
   - lib\obstacle_nav\chassis_accel.py
   - lib\obstacle_nav\collision_side.py
+  - lib\obstacle_nav\depth_ground_calib.py
+  - lib\obstacle_nav\depth_ground_calib_step.py
+  - lib\obstacle_nav\ground_split_estimator.py
   - lib\obstacle_nav\imu_calib_panel.py
   - lib\obstacle_nav\imu_calib_snapshot.py
   - lib\obstacle_nav\imu_calib_step.py
@@ -132,6 +139,10 @@ files:
   - lib\obstacle_nav\nav_roi_guide_panel.py
   - lib\obstacle_nav\nav_roi_layout.py
   - lib\obstacle_nav\nav_roi_pixel_box.py
+  - lib\obstacle_nav\obstacle_band_reading.py
+  - lib\obstacle_nav\obstacle_band_sampler.py
+  - lib\obstacle_nav\obstacle_near_mask_panel.py
+  - lib\obstacle_nav\obstacle_nav_hud.py
   - lib\obstacle_nav\obstacle_nav_runtime.py
   - lib\obstacle_nav\obstacle_nav_settings.py
   - lib\obstacle_nav\obstacle_probe_hub.py
@@ -159,7 +170,9 @@ files:
   - lib\vision\depth_fusion_hud.py
   - lib\vision\depth_infer_result.py
   - lib\vision\depth_infer_worker.py
+  - lib\vision\depth_pixel.py
   - lib\vision\depth_view_mode.py
+  - lib\vision\depth_warmth_sampler.py
   - lib\yahboom\__init__.py
   - lib\yahboom\ch340_usb_serial.py
   - lib\yahboom\maix_battery_reader.py

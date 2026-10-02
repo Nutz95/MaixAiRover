@@ -59,6 +59,8 @@ class OverlaySession:
     if a._xbox.snapshot().connected and a._obstacle is not None:
       a._obstacle.begin_calib_after_checklist()
       if a._obstacle.is_calib_open():
+        if a._obstacle.uses_live_camera() and a._camera is not None:
+          a._camera.set_paused(False)
         return
     debug_open = (
       (a._yahboom_debug is not None and a._yahboom_debug.is_open())
@@ -99,8 +101,11 @@ class OverlaySession:
       a._camera.set_paused(False)
 
   def handle_modal_confirm(self) -> bool:
-    """Dismiss checklist or advance IMU calib via Xbox A / OK. Return True if handled."""
+    """Dismiss checklist / drive-link / IMU calib via Xbox A. Return True if handled."""
     a = self._app
+    if a._drive_link_open:
+      a.retry_drive_link()
+      return True
     with a._checklist_lock:
       checklist_open = a._checklist_open
       checklist_ready = a._checklist is not None
@@ -111,7 +116,10 @@ class OverlaySession:
       return True
     if a._obstacle is not None and a._obstacle.is_calib_open():
       if a._obstacle.confirm_modal():
-        if not a._obstacle.is_calib_open() and a._camera is not None:
+        if (
+          not a._obstacle.is_calib_open()
+          or a._obstacle.uses_live_camera()
+        ) and a._camera is not None:
           debug_open = (
             (a._yahboom_debug is not None and a._yahboom_debug.is_open())
             or (a._debug is not None and a._debug.is_open())

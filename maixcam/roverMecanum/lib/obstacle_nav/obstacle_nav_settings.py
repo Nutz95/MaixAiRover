@@ -43,6 +43,19 @@ class ObstacleNavSettings:
     self.obstacle_top_ratio = self._ratio(block, "obstacle_top_ratio", 0.18)
     self.obstacle_left_ratio = self._ratio(block, "obstacle_left_ratio", 0.15)
     self.obstacle_right_ratio = self._ratio(block, "obstacle_right_ratio", 0.85)
+    # Depth ground-split after IMU (Xbox A confirm). Runtime-only until reboot.
+    self.depth_ground_calib = as_bool(block, "depth_ground_calib", True)
+    self.ground_floor_warmth = as_float(block, "ground_floor_warmth", 0.08)
+    # Soft avoidance from L/C/R warmth in the obstacle band.
+    self.avoidance_enabled = as_bool(block, "avoidance_enabled", True)
+    self.avoidance_close_warmth = as_float(block, "avoidance_close_warmth", 0.35)
+    self.avoidance_caution_warmth = as_float(block, "avoidance_caution_warmth", 0.15)
+    self.avoidance_strafe_axis = max(500, as_int(block, "avoidance_strafe_axis", 12000))
+    self.avoidance_reverse_axis = max(500, as_int(block, "avoidance_reverse_axis", 8000))
+
+  def set_ground_top_ratio(self, ratio: float) -> None:
+    """Apply a confirmed ground split (session only — not written to disk)."""
+    self.ground_top_ratio = max(0.0, min(1.0, float(ratio)))
 
   @staticmethod
   def _ratio(block: dict, key: str, default: float) -> float:

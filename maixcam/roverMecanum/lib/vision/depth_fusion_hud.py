@@ -11,6 +11,8 @@ from lib.vision.ball_depth_band import BallDepthBand
 from lib.vision.depth_infer_result import DepthInferResult
 from lib.vision.depth_infer_worker import DepthInferWorker
 from lib.vision.depth_view_mode import DepthViewMode
+from lib.vision.depth_warmth_sampler import DepthWarmthSampler
+from lib.obstacle_nav.nav_roi_layout import NavRoiLayout
 
 try:
   from maix import image as maix_image
@@ -39,6 +41,7 @@ class DepthFusionHud:
     self._model = None
     self._last_submit_ms = 0
     self._last_depth = None
+    self._last_depth_paint = None
     self._last_band = BallDepthBand.UNKNOWN
     self._near_obstacle = False
     self._error = ""
@@ -50,6 +53,12 @@ class DepthFusionHud:
     self._target_w = 0
     self._target_h = 0
     self._worker = DepthInferWorker(self._job)
+    self._nav_roi: NavRoiLayout | None = None
+    self._warmth = DepthWarmthSampler()
+
+  def last_depth_image(self):
+    """Return the last turbo depth plane (infer or full size), or None."""
+    return self._last_depth
 
   def apply_settings(self, settings: BallFollowSettings) -> None:
     """Hot-reload fusion flags; drop the NN when fusion is turned off."""
@@ -61,9 +70,22 @@ class DepthFusionHud:
     if self._model is not None and settings.depth_model_path != old_path:
       self._model = None
       self._last_depth = None
+      self._last_depth_paint = None
 
-  def draw(self, img, ball_snapshot: BallFollowSnapshot) -> None:
-    """Paint last depth result; submit a new async job when due."""
+  def draw(
+    self,
+    img,
+    ball_snapshot: BallFollowSnapshot,
+    nav_roi: NavRoiLayout | None = None,
+    *,
+    force_depth_paint: bool = False,
+  ) -> None:
+    """Paint last depth result; submit a new async job when due.
+
+    Runs in manual and ball-follow. ``nav_roi`` drives the blue-band near mask.
+    ``force_depth_paint`` replaces the frame with turbo depth (ground calib).
+    """
+    self._nav_roi = nav_roi
     if not self._settings.depth_fusion_enabled or maix_image is None:
       return
     if self._oom_disabled:
@@ -85,8 +107,14 @@ class DepthFusionHud:
       now_ms = int(monotonic() * 1000)
       self._maybe_submit(img, ball_snapshot, now_ms)
       paint_t0 = monotonic()
-      self._paint(img)
+      if force_depth_paint and self._last_depth is not None:
+        self._replace_with_depth(img, self._last_depth)
+      else:
+        self._paint(img)
       self._last_paint_ms = (monotonic() - paint_t0) * 1000.0
+      if force_depth_paint:
+        self._maybe_log_timing(now_ms)
+        return
       if self._settings.depth_show_contours and not self._contours_disabled:
         if self._settings.depth_view is not DepthViewMode.RGB:
           self._draw_contours_low_res(img)
@@ -105,6 +133,7 @@ class DepthFusionHud:
     if result is None:
       return
     self._last_depth = result.depth
+    self._last_depth_paint = None
     self._last_band = result.band
     self._near_obstacle = result.near_obstacle
     self._last_infer_ms = result.infer_ms
@@ -134,15 +163,14 @@ class DepthFusionHud:
       self._last_submit_ms = now_ms
 
   def _capture_infer_frame(self, img):
-    """Own a small RGB buffer the worker can read safely."""
+    """Own a small RGB buffer the worker can read safely.
+
+    Resize first — never full-frame copy (that stalls the HUD).
+    """
     try:
-      source = img.copy() if hasattr(img, "copy") else img
-      small = self._infer_input(source)
-      if small is source and hasattr(source, "copy"):
-        return source.copy()
-      if hasattr(small, "copy") and small is not source:
-        # resize already allocated; keep it (worker consumes once).
-        return small
+      small = self._infer_input(img)
+      if small is img:
+        return img.copy() if hasattr(img, "copy") else img
       return small
     except MemoryError as oom:
       self._kill_after_oom(oom)
@@ -161,20 +189,17 @@ class DepthFusionHud:
       )
       if depth_small is None:
         return None
-      near = self._estimate_near(depth_small, observation)
-      band = self._classify_ball(depth_small, observation)
-      depth = depth_small
-      view = self._settings.depth_view
-      if view is not DepthViewMode.RGB:
-        tw = self._target_w
-        th = self._target_h
-        if tw > 0 and th > 0 and (
-          depth_small.width() != tw or depth_small.height() != th
-        ):
-          if hasattr(depth_small, "resize"):
-            depth = depth_small.resize(tw, th)
+      near = self._warmth.estimate_near(
+        depth_small,
+        observation,
+        self._settings,
+        self._nav_roi,
+        self._target_w,
+        self._target_h,
+      )
+      band = self._warmth.classify_ball(depth_small, observation, self._settings)
       return DepthInferResult(
-        depth=depth, band=band, near_obstacle=near, infer_ms=0.0,
+        depth=depth_small, band=band, near_obstacle=near, infer_ms=0.0,
       )
     except MemoryError as oom:
       self._kill_after_oom(oom)
@@ -214,21 +239,29 @@ class DepthFusionHud:
   def _unload(self, reason: str) -> None:
     self._model = None
     self._last_depth = None
+    self._last_depth_paint = None
     self._last_band = BallDepthBand.UNKNOWN
     self._near_obstacle = False
     if reason == "oom":
       return
 
   def _ensure_full_size(self, img, depth):
-    """Upscale depth to capture size when painting; keep result cached."""
+    """Upscale depth for HUD paint only — keep ``_last_depth`` at infer size."""
     tw = img.width()
     th = img.height()
+    if (
+      self._last_depth_paint is not None
+      and self._last_depth_paint.width() == tw
+      and self._last_depth_paint.height() == th
+    ):
+      return self._last_depth_paint
     if depth.width() == tw and depth.height() == th:
+      self._last_depth_paint = depth
       return depth
     if not hasattr(depth, "resize"):
       return depth
     plane = depth.resize(tw, th)
-    self._last_depth = plane
+    self._last_depth_paint = plane
     return plane
 
   def _replace_with_depth(self, img, depth) -> None:
@@ -347,80 +380,3 @@ class DepthFusionHud:
       print(f"depth: contours disabled after OOM: {oom}")
     except Exception as edge_error:
       print(f"depth: contours: {edge_error}")
-
-  def _classify_ball(
-    self, depth_img, observation: BallObservation | None,
-  ) -> BallDepthBand:
-    """Map turbo warmth at the ball centre (+ size hint) to a distance band."""
-    if observation is None:
-      return BallDepthBand.UNKNOWN
-    try:
-      scale_x = depth_img.width() / max(1, observation.image_width)
-      scale_y = depth_img.height() / max(1, observation.image_height)
-      x = int(observation.center_x * scale_x)
-      y = int(observation.center_y * scale_y)
-      x = max(0, min(depth_img.width() - 1, x))
-      y = max(0, min(depth_img.height() - 1, y))
-      warmth = self._sample_warmth(depth_img, x, y)
-      band = self._band_from_warmth(warmth)
-      height = observation.height_ratio
-      if height >= self._settings.too_close_height_ratio and band is not BallDepthBand.CLOSE:
-        return BallDepthBand.CLOSE
-      if height < self._settings.target_height_ratio * 0.55 and band is BallDepthBand.OK:
-        return BallDepthBand.FAR
-      return band
-    except Exception as band_error:
-      print(f"depth: ball band: {band_error}")
-      return BallDepthBand.UNKNOWN
-
-  def _band_from_warmth(self, warmth: float) -> BallDepthBand:
-    if warmth >= self._settings.depth_close_warmth:
-      return BallDepthBand.CLOSE
-    if warmth <= self._settings.depth_far_warmth:
-      return BallDepthBand.FAR
-    return BallDepthBand.OK
-
-  def _sample_warmth(self, depth_img, cx: int, cy: int) -> float:
-    """Average (R−B)/255 in a small window — turbo warm = near."""
-    total = 0.0
-    count = 0
-    for dy in (-2, 0, 2):
-      for dx in (-2, 0, 2):
-        x = max(0, min(depth_img.width() - 1, cx + dx))
-        y = max(0, min(depth_img.height() - 1, cy + dy))
-        pixel = depth_img.get_pixel(x, y)
-        if isinstance(pixel, (tuple, list)) and len(pixel) >= 3:
-          total += (int(pixel[0]) - int(pixel[2])) / 255.0
-          count += 1
-    return total / count if count else 0.0
-
-  def _estimate_near(
-    self, depth_img, observation: BallObservation | None,
-  ) -> bool:
-    """ROI ahead looks close (warm) while ball is absent/far in that band."""
-    try:
-      w = depth_img.width()
-      h = depth_img.height()
-      s = self._settings
-      left = int(s.depth_roi_left_ratio * w)
-      right = int(s.depth_roi_right_ratio * w)
-      top = int(s.depth_roi_top_ratio * h)
-      bottom = int(s.depth_roi_bottom_ratio * h)
-      total = 0.0
-      count = 0
-      step_x = max(1, (right - left) // 8)
-      step_y = max(1, (bottom - top) // 8)
-      for y in range(top, bottom, step_y):
-        for x in range(left, right, step_x):
-          total += self._sample_warmth(depth_img, x, y)
-          count += 1
-      if count <= 0:
-        return False
-      mean_warmth = total / count
-      ball_blocking = False
-      if observation is not None and observation.height_ratio >= s.too_close_height_ratio * 0.7:
-        ball_blocking = True
-      return mean_warmth >= s.depth_close_warmth and not ball_blocking
-    except Exception as near_error:
-      print(f"depth: near estimate: {near_error}")
-      return False

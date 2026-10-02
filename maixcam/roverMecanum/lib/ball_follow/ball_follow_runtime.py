@@ -74,6 +74,10 @@ class BallFollowRuntime:
     """Force manual mode (shutdown path)."""
     self.controller.set_enabled(False)
 
+  def set_blend_drive(self, blend_drive) -> None:
+    """Attach soft avoidance blender used in ball-follow and manual dispatch."""
+    self._drive.set_blend_drive(blend_drive)
+
   def dispatch(self, drive: DriveOutput) -> None:
     """Apply one teleop tick through the ball/manual arbitrator."""
     self.manual_resume_pending = self._drive.dispatch(
@@ -84,18 +88,28 @@ class BallFollowRuntime:
     """Return the HUD snapshot for overlays."""
     return self.controller.snapshot()
 
-  def draw_depth(self, frame) -> None:
+  def draw_depth(self, frame, nav_roi=None, *, force_depth_paint: bool = False) -> None:
     """Paint depth HUD only — never gates ball detect/track/drive.
 
     Ball position + follow run on the teleop tick (``dispatch`` → detector).
     Depth busy means the last distance band stays stale; tracking continues.
+    Runs in manual teleop too when ``depth_fusion_enabled``.
     """
     try:
-      self.depth_hud.draw(frame, self.controller.snapshot())
+      self.depth_hud.draw(
+        frame,
+        self.controller.snapshot(),
+        nav_roi=nav_roi,
+        force_depth_paint=force_depth_paint,
+      )
     except MemoryError as oom:
       print(f"ball: depth draw OOM (ignored): {oom}")
     except Exception as depth_error:
       print(f"ball: depth draw: {depth_error}")
+
+  def last_depth_image(self):
+    """Return last DepthAnything plane for obstacle bands, or None."""
+    return self.depth_hud.last_depth_image()
 
   def _frame(self):
     if self._get_frame is None:
