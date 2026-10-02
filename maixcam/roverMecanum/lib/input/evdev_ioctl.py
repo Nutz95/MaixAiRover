@@ -24,7 +24,10 @@ def read_absinfo(fd, axis_code):
   """
   if fd is None:
     return None
-  fileno = fd.fileno() if hasattr(fd, "fileno") else fd
+  try:
+    fileno = fd.fileno()
+  except AttributeError:
+    fileno = fd
   buf = array.array("i", [0] * 6)
   try:
     fcntl.ioctl(fileno, _eviocgabs_request(axis_code), buf, True)

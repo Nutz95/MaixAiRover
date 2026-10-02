@@ -2,6 +2,7 @@
 
 from maix import image
 
+from lib.app.drive_mode import DriveMode
 from lib.ball_follow.ball_follow_snapshot import BallFollowSnapshot
 
 # Below the top-left exit pad (8,8,44×44) so the LED never covers the hit target.
@@ -24,7 +25,7 @@ class BallFollowHud:
     Callers must pass the HUD display copy only — never the detect buffer.
     """
     self._draw_mode_led(img, ball_snapshot)
-    if not ball_snapshot.enabled:
+    if ball_snapshot.drive_mode is not DriveMode.FOLLOW:
       return
     self._draw_setpoint_guides(img, ball_snapshot)
     self._draw_trajectory(img, ball_snapshot)
@@ -65,16 +66,23 @@ class BallFollowHud:
     img.draw_line(cx, 0, cx, height - 1, guide, thickness=1)
 
   def _draw_mode_led(self, img, ball_snapshot: BallFollowSnapshot) -> None:
-    """Colour LED: grey=manual, green/red=follow that colour."""
-    if not ball_snapshot.enabled:
+    """Colour LED: grey=manual, yellow=avoid, green/red=follow that colour."""
+    mode = ball_snapshot.drive_mode
+    if mode is DriveMode.MANUAL:
       fill = image.Color.from_rgb(70, 70, 70)
+      lit = False
+    elif mode is DriveMode.AVOID:
+      fill = image.Color.from_rgb(240, 200, 40)
+      lit = True
     elif ball_snapshot.color == "red":
       fill = image.Color.from_rgb(230, 40, 40)
+      lit = True
     else:
       fill = image.Color.from_rgb(40, 220, 70)
+      lit = True
     img.draw_circle(_LED_X, _LED_Y, _LED_R, fill, thickness=-1)
     img.draw_circle(_LED_X, _LED_Y, _LED_R, image.COLOR_WHITE, thickness=2)
-    if ball_snapshot.enabled:
+    if lit:
       # Bright core — reads as an “on” LED even on turbo depth.
       img.draw_circle(
         _LED_X - 3, _LED_Y - 3, 4,

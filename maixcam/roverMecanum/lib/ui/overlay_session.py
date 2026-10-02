@@ -37,6 +37,7 @@ class OverlaySession:
     a._was_busy = snap.busy
 
   def open_checklist(self) -> None:
+    """Show the peripheral checklist and pause the camera."""
     a = self._app
     with a._checklist_lock:
       a._checklist = None
@@ -45,6 +46,7 @@ class OverlaySession:
       a._camera.set_paused(True)
 
   def close_checklist(self) -> None:
+    """Dismiss checklist, start debug links, then chain IMU/ground calib."""
     a = self._app
     with a._checklist_lock:
       a._checklist_open = False
@@ -70,6 +72,7 @@ class OverlaySession:
       a._camera.set_paused(False)
 
   def open_debug(self) -> None:
+    """Open Yahboom or ESP debug overlay and pause the camera."""
     a = self._app
     if a._yahboom_debug is not None:
       if a._camera is not None:
@@ -85,6 +88,7 @@ class OverlaySession:
     a._arm_touch_ignore()
 
   def close_debug(self) -> None:
+    """Close debug overlay and unpause the camera when safe."""
     a = self._app
     was_open = False
     if a._yahboom_debug is not None and a._yahboom_debug.is_open():

@@ -74,9 +74,9 @@ class ObstacleNavHud:
       frame.draw_string(
         8,
         frame.height() - 28,
-        f"OBS L{reading.left:.2f} C{reading.center:.2f} R{reading.right:.2f}",
+        reading.hud_label(),
         maix_image.COLOR_WHITE,
-        scale=1.3,
+        scale=1.1,
       )
     if not avoidance_enabled:
       return

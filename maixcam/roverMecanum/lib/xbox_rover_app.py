@@ -310,7 +310,9 @@ class XboxRoverApp:
       return
     if self._obstacle is not None:
       self._obstacle.note_drive_command(drive)
-      drive = self._obstacle.blend_drive(drive)
+      drive = self._obstacle.blend_drive(
+        drive, nav_active=self._ball.drive_mode().uses_avoidance(),
+      )
     try:
       self._ball.dispatch(drive)
     except Exception as exc:

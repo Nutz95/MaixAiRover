@@ -1,33 +1,13 @@
-"""ObstacleBandSampler L/C/R means + ball mask."""
+"""ObstacleBandSampler multi-column peaks + ball mask."""
 
 from __future__ import annotations
 
+from fake_edge_hot_spot_depth import FakeEdgeHotSpotDepth
+from fake_hot_left_depth import FakeHotLeftDepth
 from lib.ball_follow.ball_observation import BallObservation
 from lib.obstacle_nav.nav_roi_layout import NavRoiLayout
 from lib.obstacle_nav.obstacle_band_sampler import ObstacleBandSampler
 from lib.obstacle_nav.obstacle_nav_settings import ObstacleNavSettings
-
-
-class _HotLeftDepth:
-  def __init__(self, width: int, height: int) -> None:
-    self._w = width
-    self._h = height
-
-  def width(self) -> int:
-    return self._w
-
-  def height(self) -> int:
-    return self._h
-
-  def get_pixel(self, x: int, y: int, rgbtuple: bool = False):
-    # Left third warm.
-    if x < self._w // 3:
-      rgb = (220, 60, 10)
-    else:
-      rgb = (30, 80, 160)
-    if rgbtuple:
-      return rgb
-    return [rgb[0] << 16 | rgb[1] << 8 | rgb[2]]
 
 
 def test_left_third_warmer() -> None:
@@ -37,15 +17,36 @@ def test_left_third_warmer() -> None:
       "obstacle_top_ratio": 0.20,
       "obstacle_left_ratio": 0.0,
       "obstacle_right_ratio": 1.0,
+      "obstacle_band_count": 5,
     },
   })
   layout = NavRoiLayout(settings)
-  depth = _HotLeftDepth(60, 60)
+  depth = FakeHotLeftDepth(60, 60)
   reading = ObstacleBandSampler().sample(
-    depth, layout, frame_width=60, frame_height=60,
+    depth, layout, frame_width=60, frame_height=60, column_count=5,
   )
-  assert reading.left > reading.right
-  assert reading.left > 0.3
+  assert reading.warmth_at(0) > reading.warmth_at(4)
+  assert reading.warmth_at(0) > 0.3
+
+
+def test_edge_hotspot_triggers_peak() -> None:
+  settings = ObstacleNavSettings({
+    "obstacle_nav": {
+      "ground_top_ratio": 0.80,
+      "obstacle_top_ratio": 0.10,
+      "obstacle_left_ratio": 0.0,
+      "obstacle_right_ratio": 1.0,
+      "obstacle_band_count": 5,
+    },
+  })
+  layout = NavRoiLayout(settings)
+  depth = FakeEdgeHotSpotDepth(60, 60)
+  reading = ObstacleBandSampler().sample(
+    depth, layout, frame_width=60, frame_height=60, column_count=5,
+  )
+  # Top-k mean must still catch a narrow edge obstacle.
+  assert reading.warmth_at(0) > 0.5
+  assert reading.warmth_at(0) > reading.warmth_at(2)
 
 
 def test_ball_mask_skips_hot_cell() -> None:
@@ -55,10 +56,11 @@ def test_ball_mask_skips_hot_cell() -> None:
       "obstacle_top_ratio": 0.10,
       "obstacle_left_ratio": 0.0,
       "obstacle_right_ratio": 1.0,
+      "obstacle_band_count": 5,
     },
   })
   layout = NavRoiLayout(settings)
-  depth = _HotLeftDepth(60, 60)
+  depth = FakeHotLeftDepth(60, 60)
   ball = BallObservation(
     center_x=10,
     center_y=30,
@@ -71,7 +73,6 @@ def test_ball_mask_skips_hot_cell() -> None:
     image_height=60,
   )
   reading = ObstacleBandSampler().sample(
-    depth, layout, frame_width=60, frame_height=60, ball=ball,
+    depth, layout, frame_width=60, frame_height=60, column_count=5, ball=ball,
   )
-  # Mask covers most of the left hot zone → left mean drops.
-  assert reading.left < 0.5
+  assert reading.warmth_at(0) < 0.5

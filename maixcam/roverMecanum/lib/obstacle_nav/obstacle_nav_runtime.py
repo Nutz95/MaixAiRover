@@ -28,8 +28,6 @@ from lib.obstacle_nav.stuck_probe import StuckProbe
 from lib.obstacle_nav.stuck_report import StuckReport
 from lib.yahboom.yahboom_imu_accel import YahboomImuAccel
 from lib.yahboom.yahboom_imu_attitude import YahboomImuAttitude
-
-
 class ObstacleNavRuntime:
   """Calib after checklist, then stuck awareness + depth avoidance."""
   def __init__(self, width: int, height: int, raw_config: dict) -> None:
@@ -43,7 +41,7 @@ class ObstacleNavRuntime:
     self._hud = ObstacleNavHud()
     self._band_sampler = ObstacleBandSampler()
     self._avoidance = AvoidancePolicy()
-    self._reading = ObstacleBandReading.clear()
+    self._reading = ObstacleBandReading.clear(self._settings.obstacle_band_count)
     self._hint = AvoidanceHint.NONE
     self._report = StuckReport.clear()
     self._overlay_visible = False
@@ -56,38 +54,31 @@ class ObstacleNavRuntime:
     if self._settings.enabled and self._settings.probe_tcp_port > 0:
       self._probe_hub = ObstacleProbeHub(self._settings.probe_tcp_port)
       self._probe_hub.start()
-
   def apply_config(self, raw_config: dict) -> None:
     """Hot-reload obstacle_nav settings."""
     self._settings = ObstacleNavSettings(raw_config)
     self._wizard.apply_settings(self._settings)
     self._detector.apply_settings(self._settings)
-
   def close(self) -> None:
     """Stop the TCP probe hub."""
     if self._probe_hub is not None:
       self._probe_hub.stop()
       self._probe_hub = None
-
   @property
   def settings(self) -> ObstacleNavSettings:
     """Return current settings."""
     return self._settings
-
   @property
   def calib_panel(self) -> ImuCalibPanel:
     """Return the full-screen calib panel."""
     return self._calib_panel
-
   @property
   def stuck_panel(self) -> StuckOverlayPanel:
     """Return the stuck overlay panel."""
     return self._stuck_panel
-
   def nav_roi_layout(self) -> NavRoiLayout:
     """Return ROI layout for HUD guides and depth/OF crops."""
     return NavRoiLayout(self._settings)
-
   def draw_roi_guides(self, frame) -> None:
     """Paint ground / obstacle split lines when enabled."""
     if not self._settings.enabled:
@@ -98,10 +89,13 @@ class ObstacleNavRuntime:
       self._ground,
       show_guides=self._settings.show_roi_guides,
     )
-
-  def draw_avoidance(self, frame) -> None:
-    """Paint dodge arrow + ground-calib prompt."""
+  def draw_avoidance(self, frame, *, nav_active: bool = True) -> None:
+    """Paint dodge arrow + ground-calib prompt (AVOID/FOLLOW when nav_active)."""
     if not self._settings.enabled:
+      return
+    if not nav_active and not self._ground.is_active():
+      self._reading = ObstacleBandReading.clear(self._settings.obstacle_band_count)
+      self._hint = AvoidanceHint.NONE
       return
     self._hud.draw_status(
       frame,
@@ -110,70 +104,61 @@ class ObstacleNavRuntime:
       self._reading,
       self.nav_roi_layout(),
       self._settings,
-      avoidance_enabled=self._settings.avoidance_enabled and self._avoidance_armed,
+      avoidance_enabled=(
+        nav_active and self._settings.avoidance_enabled and self._avoidance_armed
+      ),
     )
-
   def is_calib_open(self) -> bool:
     """True while IMU or ground-split wizard owns confirm/skip."""
     return self._settings.enabled and (
       self._wizard.is_active() or self._ground.is_active()
     )
-
   def uses_live_camera(self) -> bool:
     """True when calib should show the camera (ground split), not black panel."""
     return self._ground.uses_camera()
-
   def blocks_teleop(self) -> bool:
     """True when sticks must not drive (wizard active)."""
     return self.is_calib_open()
-
   def calib_snapshot(self) -> ImuCalibSnapshot:
     """Return the current IMU wizard HUD snapshot."""
     return self._wizard.snapshot()
-
   def stuck_report(self) -> StuckReport:
     """Return the last stuck report (for tests / HUD)."""
     return self._report
-
   def stuck_probe(self) -> StuckProbe:
     """Return live analyzer probe for TCP / SSH."""
     return self._detector.probe(ready=self._ready_for_stuck)
-
   def show_stuck_overlay(self) -> bool:
     """True when the top-down stuck card should paint."""
     return self._settings.stuck_detection_enabled and self._overlay_visible
-
   def should_cut_drive(self) -> bool:
     """True when attitude tip must stop motors (other stuck = HUD only)."""
     return self._settings.stuck_detection_enabled and self._report.cuts_drive()
-
   def on_disconnect(self) -> None:
     """Tear down wizard and stuck state when the pad drops."""
     self._wizard.reset()
     self._ground.reset()
     self._detector.reset()
     self._report = StuckReport.clear()
-    self._reading = ObstacleBandReading.clear()
+    self._reading = ObstacleBandReading.clear(self._settings.obstacle_band_count)
     self._hint = AvoidanceHint.NONE
     self._overlay_visible = False
     self._clear_since_ms = None
     self._ready_for_stuck = False
     self._avoidance_armed = not self._settings.depth_ground_calib
-
   def begin_calib_after_checklist(self) -> None:
     """Start the wizard after the peripheral checklist is dismissed."""
     if not self._settings.enabled:
       return
     self._avoidance_armed = not self._settings.depth_ground_calib
     if not self._settings.calib_after_connect:
-      # No IMU rest bias → tip would false-fire; keep stuck disarmed.
+      # No IMU rest bias -> tip would false-fire; keep stuck disarmed.
       self._ready_for_stuck = False
       self._detector.set_frame(ImuChassisFrame.default())
       self._maybe_start_ground()
       return
     self._wizard.start(time.ticks_ms())
     self._ready_for_stuck = False
-
   def confirm_modal(self) -> bool:
     """Handle A / OK on IMU or ground calib. Return True if consumed."""
     if not self.is_calib_open():
@@ -200,7 +185,6 @@ class ObstacleNavRuntime:
       self._maybe_start_ground()
       return True
     return False
-
   def skip_calib(self) -> bool:
     """Skip IMU or ground wizard."""
     if not self._settings.enabled or not self._settings.calib_skippable:
@@ -220,16 +204,13 @@ class ObstacleNavRuntime:
     print("obstacle: stuck armed after calib skip")
     self._maybe_start_ground()
     return True
-
   def nudge_ground_line(self, delta_ratio: float) -> None:
     """Stick-adjust the proposed ground split during calib."""
     if self._ground.is_active():
       self._ground.nudge(delta_ratio)
-
   def note_drive_command(self, drive: DriveOutput) -> None:
     """Remember last teleop axes for stuck analysis."""
     self._last_cmd = drive
-
   def note_depth(
     self,
     depth_img,
@@ -237,11 +218,12 @@ class ObstacleNavRuntime:
     frame_width: int,
     frame_height: int,
     ball: BallObservation | None = None,
+    nav_active: bool = True,
   ) -> None:
     """Ingest latest depth for ground calib + L/C/R avoidance bands."""
-    if not self._settings.enabled or depth_img is None:
+    if not self._settings.enabled:
       return
-    if self._ground.is_active():
+    if self._ground.is_active() and depth_img is not None:
       self._ground.note_depth(
         depth_img,
         frame_width=frame_width,
@@ -250,19 +232,23 @@ class ObstacleNavRuntime:
       )
     if self._ground.is_active() or self._wizard.is_active():
       return
-    # Always sample for HUD zones (even before avoidance is armed).
+    if not nav_active or depth_img is None:
+      self._reading = ObstacleBandReading.clear(self._settings.obstacle_band_count)
+      self._hint = AvoidanceHint.NONE
+      return
     self._reading = self._band_sampler.sample(
       depth_img,
       self.nav_roi_layout(),
       frame_width=frame_width,
       frame_height=frame_height,
+      column_count=self._settings.obstacle_band_count,
       ball=ball,
     )
-
-  def blend_drive(self, drive: DriveOutput) -> DriveOutput:
+  def blend_drive(self, drive: DriveOutput, *, nav_active: bool = True) -> DriveOutput:
     """Apply soft avoidance override; store HUD hint."""
     if (
       not self._settings.enabled
+      or not nav_active
       or not self._settings.avoidance_enabled
       or not self._avoidance_armed
     ):
@@ -273,7 +259,6 @@ class ObstacleNavRuntime:
     decision = self._avoidance.decide(drive, self._reading, self._settings)
     self._hint = decision.hint
     return decision.drive
-
   def tick(
     self,
     *,
@@ -351,7 +336,6 @@ class ObstacleNavRuntime:
       if self.should_cut_drive():
         return DriveOutput()
     return None
-
   def _maybe_start_ground(self) -> None:
     if not self._settings.depth_ground_calib:
       self._arm_avoidance()
@@ -361,10 +345,8 @@ class ObstacleNavRuntime:
     self._avoidance_armed = False
     self._ground.start(seed_ratio=self._settings.ground_top_ratio)
     print("obstacle: ground split calib started")
-
   def _arm_avoidance(self) -> None:
     self._avoidance_armed = True
-
   def _maybe_log_probe(self, now_ms: int) -> None:
     driving = (
       abs(self._last_cmd.axis_forward) > self._settings.cmd_axis_threshold
@@ -380,7 +362,6 @@ class ObstacleNavRuntime:
       self._probe_hub.publish(line)
     else:
       print(f"obstacle probe: {line}")
-
   def _update_overlay_visibility(self, now_ms: int) -> None:
     if self._report.level != StuckLevel.OK:
       self._overlay_visible = True
@@ -394,3 +375,4 @@ class ObstacleNavRuntime:
     if now_ms - self._clear_since_ms >= self._settings.overlay_clear_ms:
       self._overlay_visible = False
       self._clear_since_ms = None
+

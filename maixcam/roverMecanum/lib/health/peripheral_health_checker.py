@@ -13,11 +13,11 @@ from lib.health.peripheral_checklist import PeripheralChecklist
 
 
 class PeripheralHealthChecker:
+  """Probe Xbox, camera, and either Yahboom USB or ESP link."""
+
   YAHBOOM_POLL_COUNT = 12
   YAHBOOM_POLL_SLEEP_S = 0.04
   YAHBOOM_MIN_VOLTS = 6.0
-
-  """Probe Xbox, camera, and either Yahboom USB or ESP link."""
 
   def __init__(
     self,
@@ -27,6 +27,7 @@ class PeripheralHealthChecker:
     rear_uart_port: str = "",
     drive_backend: DriveBackendKind = DriveBackendKind.ESP,
   ) -> None:
+    """Store probe endpoints for the post-connect checklist."""
     self._esp_wifi_host = (esp_wifi_host or "").strip()
     self._esp_wifi_port = int(esp_wifi_port)
     self._esp_uart_port = (esp_uart_port or "uart4").strip()

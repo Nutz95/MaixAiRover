@@ -80,17 +80,24 @@ class HudComposer:
       and a._obstacle.is_calib_open()
       and a._obstacle.uses_live_camera()
     )
-    # Manual: keep live RGB (no full depth paint each frame — that lags teleop).
-    # Depth still runs async; red L/C/R zones + stop overlay use last plane.
-    a._ball.draw_depth(frame, nav_roi=nav_roi, force_depth_paint=force_depth)
+    # MANUAL: no depth NN. AVOID/FOLLOW (or ground calib): async DepthAnything.
+    depth_on = force_depth or a._ball.drive_mode().uses_depth()
+    nav_active = a._ball.drive_mode().uses_avoidance()
+    a._ball.draw_depth(
+      frame,
+      nav_roi=nav_roi,
+      force_depth_paint=force_depth,
+      enabled=depth_on,
+    )
     if a._obstacle is not None:
-      depth = a._ball.last_depth_image()
+      depth = a._ball.last_depth_image() if depth_on else None
       ball_obs = ball_snap.observation if ball_snap is not None else None
       a._obstacle.note_depth(
         depth,
         frame_width=frame.width(),
         frame_height=frame.height(),
         ball=ball_obs,
+        nav_active=nav_active,
       )
     wheels = a._rover.last_wheel_speeds()
     a._ui.draw_overlay(
@@ -110,7 +117,9 @@ class HudComposer:
     )
     if a._obstacle is not None:
       a._obstacle.draw_roi_guides(frame)
-      a._obstacle.draw_avoidance(frame)
+      a._obstacle.draw_avoidance(
+        frame, nav_active=a._ball.drive_mode().uses_avoidance(),
+      )
     if a._obstacle is not None and a._obstacle.show_stuck_overlay():
       a._obstacle.stuck_panel.draw(frame, a._obstacle.stuck_report())
     a._disp.show(frame)

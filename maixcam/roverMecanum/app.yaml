@@ -8,6 +8,7 @@ desc: >-
   closed-loop (default) or Waveshare ESP UART.
 files:
   - lib\app\__init__.py
+  - lib\app\drive_mode.py
   - lib\app\drive_stack_handles.py
   - lib\app\drive_stack_loader.py
   - lib\app\teleop_tick_handler.py

@@ -34,12 +34,12 @@ class AvoidanceArrowPanel:
       img.draw_line(cx - 40, cy, cx + 40, cy, color, thickness=6)
 
   def draw_vector(self, img, reading: ObstacleBandReading) -> None:
-    """Paint a continuous dodge vector from L/C/R excess warmth."""
-    if maix_image is None:
+    """Paint a continuous dodge vector from left/right/center excess warmth."""
+    if maix_image is None or reading.column_count() < 1:
       return
     # Right hotter → push left (negative screen x); center hot → reverse (down).
-    dx = (reading.left - reading.right) * 180.0
-    dy = max(0.0, reading.center) * 160.0
+    dx = (reading.left_mean() - reading.right_mean()) * 180.0
+    dy = max(0.0, reading.center_warmth()) * 160.0
     if abs(dx) < 12 and dy < 12:
       return
     cx = img.width() // 2

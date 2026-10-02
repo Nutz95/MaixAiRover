@@ -1,4 +1,4 @@
-"""Sample turbo warmth in obstacle L/C/R thirds (ball-masked)."""
+"""Sample turbo warmth in obstacle columns (ball-masked)."""
 
 from __future__ import annotations
 
@@ -10,10 +10,16 @@ from lib.vision.depth_pixel import pixel_warmth
 
 
 class ObstacleBandSampler:
-  """Map full-frame ROI onto a possibly smaller depth plane and average warmth."""
+  """Map full-frame ROI onto a depth plane; top-k mean warmth per column.
 
-  GRID_X = 6
-  GRID_Y = 4
+  Mean alone was too timid at edges; raw peak was twitchy on single hot pixels.
+  Top-k mean sits in between. Column count comes from settings via the layout.
+  """
+
+  GRID_X = 4
+  GRID_Y = 5
+  # ponytail: k=3; raise toward mean (larger k) or lower toward peak (k=1).
+  TOP_K = 3
 
   def sample(
     self,
@@ -22,33 +28,33 @@ class ObstacleBandSampler:
     *,
     frame_width: int,
     frame_height: int,
+    column_count: int,
     ball: BallObservation | None = None,
   ) -> ObstacleBandReading:
-    """Return absolute L/C/R turbo warmth in the obstacle band (above ground)."""
+    """Return per-column turbo warmth across the obstacle band."""
+    count = max(1, int(column_count))
     if depth_img is None or frame_width <= 0 or frame_height <= 0:
-      return ObstacleBandReading.clear()
+      return ObstacleBandReading.clear(count)
     box = layout.obstacle_box(frame_width, frame_height)
     if box.is_empty():
-      return ObstacleBandReading.clear()
-    dw = max(1, depth_img.width())
-    dh = max(1, depth_img.height())
-    scale_x = dw / frame_width
-    scale_y = dh / frame_height
+      return ObstacleBandReading.clear(count)
+    depth_width = max(1, depth_img.width())
+    depth_height = max(1, depth_img.height())
+    scale_x = depth_width / frame_width
+    scale_y = depth_height / frame_height
     ball_box = self._ball_box(ball, frame_width, frame_height)
-    third = max(1, box.width // 3)
-    return ObstacleBandReading(
-      left=self._mean_third(
-        depth_img, box, 0, third, scale_x, scale_y, ball_box,
-      ),
-      center=self._mean_third(
-        depth_img, box, third, 2 * third, scale_x, scale_y, ball_box,
-      ),
-      right=self._mean_third(
-        depth_img, box, 2 * third, box.width, scale_x, scale_y, ball_box,
-      ),
-    )
+    warmths: list[float] = []
+    for index in range(count):
+      x0 = (box.width * index) // count
+      x1 = (box.width * (index + 1)) // count
+      warmths.append(
+        self._hot_slice(
+          depth_img, box, x0, x1, scale_x, scale_y, ball_box,
+        ),
+      )
+    return ObstacleBandReading(columns=warmths)
 
-  def _mean_third(
+  def _hot_slice(
     self,
     depth_img,
     box: NavRoiPixelBox,
@@ -64,19 +70,25 @@ class ObstacleBandSampler:
       return 0.0
     cell_w = max(1, (right - left) // self.GRID_X)
     cell_h = max(1, box.height // self.GRID_Y)
-    total = 0.0
-    count = 0
+    warmths: list[float] = []
     for row in range(self.GRID_Y):
       for col in range(self.GRID_X):
-        cx = left + col * cell_w + cell_w // 2
-        cy = box.top + row * cell_h + cell_h // 2
-        if cx >= right or cy >= box.bottom:
+        sample_x = left + col * cell_w + cell_w // 2
+        sample_y = box.top + row * cell_h + cell_h // 2
+        if sample_x >= right or sample_y >= box.bottom:
           continue
-        if ball_box is not None and self._inside(cx, cy, ball_box):
+        if ball_box is not None and self._inside(sample_x, sample_y, ball_box):
           continue
-        total += pixel_warmth(depth_img, int(cx * scale_x), int(cy * scale_y))
-        count += 1
-    return total / count if count else 0.0
+        warmths.append(
+          pixel_warmth(
+            depth_img, int(sample_x * scale_x), int(sample_y * scale_y),
+          ),
+        )
+    if not warmths:
+      return 0.0
+    warmths.sort(reverse=True)
+    take = min(self.TOP_K, len(warmths))
+    return sum(warmths[:take]) / take
 
   @staticmethod
   def warmth_at(depth_img, x: int, y: int) -> float:
@@ -89,18 +101,17 @@ class ObstacleBandSampler:
   ) -> NavRoiPixelBox | None:
     if ball is None:
       return None
-    # Map detector image coords onto the HUD/frame size.
-    sx = frame_width / max(1, ball.image_width)
-    sy = frame_height / max(1, ball.image_height)
-    half_w = max(1, int(ball.width * sx * 0.6))
-    half_h = max(1, int(ball.height * sy * 0.6))
-    cx = int(ball.center_x * sx)
-    cy = int(ball.center_y * sy)
+    scale_x = frame_width / max(1, ball.image_width)
+    scale_y = frame_height / max(1, ball.image_height)
+    half_w = max(1, int(ball.width * scale_x * 0.6))
+    half_h = max(1, int(ball.height * scale_y * 0.6))
+    center_x = int(ball.center_x * scale_x)
+    center_y = int(ball.center_y * scale_y)
     return NavRoiPixelBox(
-      left=max(0, cx - half_w),
-      top=max(0, cy - half_h),
-      right=min(frame_width, cx + half_w),
-      bottom=min(frame_height, cy + half_h),
+      left=max(0, center_x - half_w),
+      top=max(0, center_y - half_h),
+      right=min(frame_width, center_x + half_w),
+      bottom=min(frame_height, center_y + half_h),
     )
 
   @staticmethod
