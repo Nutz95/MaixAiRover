@@ -6,10 +6,13 @@ import struct
 
 from lib.yahboom.yahboom_battery import YahboomBattery
 from lib.yahboom.yahboom_encoders import YahboomEncoders
+from lib.yahboom.yahboom_imu_accel import YahboomImuAccel
 from lib.yahboom.yahboom_imu_attitude import YahboomImuAttitude
 from lib.yahboom.yahboom_protocol import (
   FUNC_REPORT_ENCODER,
+  FUNC_REPORT_ICM_RAW,
   FUNC_REPORT_IMU_ATT,
+  FUNC_REPORT_MPU_RAW,
   FUNC_REPORT_SPEED,
   HEAD,
   RX_DEVICE_ID,
@@ -19,14 +22,18 @@ from lib.yahboom.yahboom_protocol import (
 _IMU_RAW_SCALE = 10000.0
 _RAD_TO_DEG = 57.2957795
 _BATTERY_TENTHS = 10.0
+# Rosmaster_Lib ratios for raw IMU reports.
+_MPU_ACCEL_RATIO = 1.0 / 1671.84
+_ICM_ACCEL_RATIO = 1.0 / 1000.0
 
 
 class YahboomRxParser:
-  """Parse auto-report speed/battery, IMU attitude, and encoder frames."""
+  """Parse auto-report speed/battery, IMU attitude/accel, and encoder frames."""
 
   def __init__(self) -> None:
     self._buf = bytearray()
     self.last_imu: YahboomImuAttitude | None = None
+    self.last_accel: YahboomImuAccel | None = None
     self.last_encoders: YahboomEncoders | None = None
     self.last_battery: YahboomBattery | None = None
 
@@ -81,6 +88,16 @@ class YahboomRxParser:
         pitch_deg=pitch / _IMU_RAW_SCALE * _RAD_TO_DEG,
         yaw_deg=yaw / _IMU_RAW_SCALE * _RAD_TO_DEG,
       )
+    elif ext_type == FUNC_REPORT_MPU_RAW and len(payload) >= 12:
+      self.last_accel = self._parse_accel(payload, _MPU_ACCEL_RATIO)
+    elif ext_type == FUNC_REPORT_ICM_RAW and len(payload) >= 12:
+      self.last_accel = self._parse_accel(payload, _ICM_ACCEL_RATIO)
     elif ext_type == FUNC_REPORT_ENCODER and len(payload) >= 16:
       m1, m2, m3, m4 = struct.unpack_from("<iiii", payload, 0)
       self.last_encoders = YahboomEncoders(m1=m1, m2=m2, m3=m3, m4=m4)
+
+  @staticmethod
+  def _parse_accel(payload: bytes, ratio: float) -> YahboomImuAccel:
+    # gyro int16 x3 then accel int16 x3 (Rosmaster layout).
+    ax, ay, az = struct.unpack_from("<hhh", payload, 6)
+    return YahboomImuAccel(ax=ax * ratio, ay=ay * ratio, az=az * ratio)

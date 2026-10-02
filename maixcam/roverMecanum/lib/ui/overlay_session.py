@@ -25,6 +25,8 @@ class OverlaySession:
     if not snap.connected and a._was_connected:
       self.close_checklist()
       self.close_debug()
+      if a._obstacle is not None:
+        a._obstacle.on_disconnect()
       if a._debug is not None:
         a._debug.stop_link()
       if a._rear_debug is not None:
@@ -53,6 +55,11 @@ class OverlaySession:
         a._debug.start_link()
       if a._rear_debug is not None:
         a._rear_debug.start_link()
+    # Chain IMU calib after peripherals (camera stays paused until calib ends).
+    if a._xbox.snapshot().connected and a._obstacle is not None:
+      a._obstacle.begin_calib_after_checklist()
+      if a._obstacle.is_calib_open():
+        return
     debug_open = (
       (a._yahboom_debug is not None and a._yahboom_debug.is_open())
       or (a._debug is not None and a._debug.is_open())
@@ -86,8 +93,35 @@ class OverlaySession:
       was_open = True
     if was_open:
       a._arm_touch_ignore()
-    if was_open and a._camera is not None and not a._checklist_open:
+    checklist_open = a._checklist_open
+    calib_open = a._obstacle is not None and a._obstacle.is_calib_open()
+    if was_open and a._camera is not None and not checklist_open and not calib_open:
       a._camera.set_paused(False)
+
+  def handle_modal_confirm(self) -> bool:
+    """Dismiss checklist or advance IMU calib via Xbox A / OK. Return True if handled."""
+    a = self._app
+    with a._checklist_lock:
+      checklist_open = a._checklist_open
+      checklist_ready = a._checklist is not None
+    if checklist_open:
+      if checklist_ready:
+        self.close_checklist()
+        return True
+      return True
+    if a._obstacle is not None and a._obstacle.is_calib_open():
+      if a._obstacle.confirm_modal():
+        if not a._obstacle.is_calib_open() and a._camera is not None:
+          debug_open = (
+            (a._yahboom_debug is not None and a._yahboom_debug.is_open())
+            or (a._debug is not None and a._debug.is_open())
+          )
+          if not debug_open:
+            a._camera.set_paused(False)
+        a._arm_touch_ignore()
+        return True
+      return True
+    return False
 
   def run_peripheral_checklist(self) -> None:
     """Probe Yahboom or ESP after pad connect; fill the opaque checklist panel."""

@@ -40,6 +40,19 @@ class OverlayTouchRouter:
         a._request_exit()
       return
 
+    if a._obstacle is not None and a._obstacle.is_calib_open():
+      panel = a._obstacle.calib_panel
+      if panel.ok_rect().contains(action.x, action.y):
+        a._overlays.handle_modal_confirm()
+      elif panel.skip_rect().contains(action.x, action.y):
+        if a._obstacle.skip_calib():
+          if a._camera is not None:
+            a._camera.set_paused(False)
+          a._arm_touch_ignore()
+      elif a._ui.back_rect().contains(action.x, action.y):
+        a._request_exit()
+      return
+
     if debug_open and a._yahboom_debug is not None:
       panel = a._yahboom_debug_panel
       if panel.close_rect().contains(action.x, action.y):

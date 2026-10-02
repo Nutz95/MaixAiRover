@@ -182,5 +182,30 @@
     "depth_roi_bottom_ratio": 0.85,
     "depth_roi_left_ratio": 0.25,
     "depth_roi_right_ratio": 0.75
+  },
+  "obstacle_nav": {
+    "enabled": true,
+    "calib_after_connect": true,
+    "calib_skippable": true,
+    "stuck_window_ms": 350,
+    "yaw_error_deg": 20,
+    "pitch_lift_deg": 15,
+    "roll_bump_deg": 12,
+    "cmd_axis_threshold": 600,
+    "encoder_tick_threshold": 2,
+    "overlay_clear_ms": 700,
+    "accel_impact_mps2": 3.0,
+    "accel_crash_mps2": 5.0,
+    "impact_hold_ms": 150,
+    "soft_impact_enabled": false,
+    "accel_launch_mps2": 0.45,
+    "slip_delta_v_mps": 0.10,
+    "slip_enabled": false,
+    "probe_log_ms": 400,
+    "probe_tcp_port": 9400,
+    "calib_creep_axis": 7000,
+    "calib_spin_axis": 9000,
+    "calib_motion_ms": 600,
+    "calib_rest_ms": 800
   }
 }

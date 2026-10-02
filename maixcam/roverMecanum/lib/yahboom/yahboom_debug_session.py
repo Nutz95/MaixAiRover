@@ -46,6 +46,7 @@ class YahboomDebugSession:
       status=self._status,
       battery=self._board.battery(),
       imu=self._board.imu_attitude(),
+      accel=self._board.imu_accel(),
       encoders=self._board.read_encoders(),
     )
 

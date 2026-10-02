@@ -31,6 +31,7 @@ from lib.ui.overlay_touch_router import OverlayTouchRouter
 from lib.ui.touch_point import TouchPoint
 from lib.ui.ui_drawer import UiDrawer
 from lib.ui.yahboom_debug_panel import YahboomDebugPanel
+from lib.obstacle_nav.obstacle_nav_runtime import ObstacleNavRuntime
 from lib.yahboom.maix_battery_reader import MaixBatteryReader
 
 
@@ -95,6 +96,11 @@ class XboxRoverApp:
       yahboom_board=self._yahboom_board,
       get_frame=self._ball_frame,
     )
+    self._obstacle = ObstacleNavRuntime(
+      self._disp.width(),
+      self._disp.height(),
+      self._config,
+    )
     self._checklist = None
     self._checklist_open = False
     self._checklist_lock = threading.Lock()
@@ -127,9 +133,11 @@ class XboxRoverApp:
       config_max_speed=rover_cfg.max_speed,
       speed_step=rover_cfg.speed_step,
       send_interval_ms=rover_cfg.send_interval_ms,
+      obstacle=self._obstacle,
     )
     self._touch_router = OverlayTouchRouter(self)
     self._overlays = OverlaySession(self)
+    self._tick.set_overlays(self._overlays)
     self._hud = HudComposer(self)
 
   def run(self) -> None:
@@ -168,6 +176,11 @@ class XboxRoverApp:
     except Exception as stop_error:
       print(f"shutdown: send_stop: {stop_error}")
     self._control.stop()
+    if self._obstacle is not None:
+      try:
+        self._obstacle.close()
+      except Exception as obstacle_error:
+        print(f"shutdown: obstacle: {obstacle_error}")
     if self._debug is not None:
       try:
         self._debug.shutdown()
@@ -276,10 +289,14 @@ class XboxRoverApp:
     with self._checklist_lock:
       if self._checklist_open:
         return
+    if self._obstacle is not None and self._obstacle.blocks_teleop():
+      return
     if self._debug is not None and self._debug.is_open():
       return
     if self._yahboom_debug is not None and self._yahboom_debug.is_open():
       return
+    if self._obstacle is not None:
+      self._obstacle.note_drive_command(drive)
     try:
       self._ball.dispatch(drive)
     except Exception as exc:

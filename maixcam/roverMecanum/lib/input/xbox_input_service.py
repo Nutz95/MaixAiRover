@@ -43,6 +43,7 @@ class XboxInputService:
     self._pending_speed_rb = False
     self._pending_mode_toggle = False
     self._pending_color_toggle = False
+    self._pending_modal_confirm = False
     self._hid_logged = False
     self._pairing.ensure_agent()
 
@@ -81,6 +82,13 @@ class XboxInputService:
       self._pending_color_toggle = False
       return toggled
 
+  def consume_modal_confirm(self) -> bool:
+    """Consume one Xbox A edge for checklist / calib modal confirm."""
+    with self._lock:
+      confirmed = self._pending_modal_confirm
+      self._pending_modal_confirm = False
+      return confirmed
+
   def snapshot(self) -> XboxSnapshot:
     """Return an immutable snapshot for the UI and control loop."""
     with self._lock:
@@ -112,6 +120,7 @@ class XboxInputService:
       speed_rb = reader.state.take_edge(ControllerButton.RB)
       mode_toggle = reader.state.take_edge(ControllerButton.SELECT)
       color_toggle = reader.state.take_edge(ControllerButton.START)
+      modal_confirm = reader.state.take_edge(ControllerButton.A)
       reader.state.pressed_edge.clear()
       with self._lock:
         self.state = live
@@ -124,6 +133,8 @@ class XboxInputService:
           self._pending_mode_toggle = True
         if color_toggle:
           self._pending_color_toggle = True
+        if modal_confirm:
+          self._pending_modal_confirm = True
     except OSError as exc:
       if exc.errno in (errno.ENODEV, errno.ENOENT):
         self._on_reader_lost("Controller disconnected")

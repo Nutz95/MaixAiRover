@@ -120,6 +120,23 @@ files:
   - lib\motion\rover_motion_client.py
   - lib\motion\wheel_drive_port.py
   - lib\motion\wheel_speeds.py
+  - lib\obstacle_nav\__init__.py
+  - lib\obstacle_nav\chassis_accel.py
+  - lib\obstacle_nav\collision_side.py
+  - lib\obstacle_nav\imu_calib_panel.py
+  - lib\obstacle_nav\imu_calib_snapshot.py
+  - lib\obstacle_nav\imu_calib_step.py
+  - lib\obstacle_nav\imu_calib_wizard.py
+  - lib\obstacle_nav\imu_chassis_frame.py
+  - lib\obstacle_nav\motion_probe_sample.py
+  - lib\obstacle_nav\obstacle_nav_runtime.py
+  - lib\obstacle_nav\obstacle_nav_settings.py
+  - lib\obstacle_nav\obstacle_probe_hub.py
+  - lib\obstacle_nav\stuck_detector.py
+  - lib\obstacle_nav\stuck_level.py
+  - lib\obstacle_nav\stuck_overlay_panel.py
+  - lib\obstacle_nav\stuck_probe.py
+  - lib\obstacle_nav\stuck_report.py
   - lib\ui\__init__.py
   - lib\ui\checklist_panel.py
   - lib\ui\debug_panel.py
@@ -149,6 +166,7 @@ files:
   - lib\yahboom\yahboom_debug_snapshot.py
   - lib\yahboom\yahboom_drive_board.py
   - lib\yahboom\yahboom_encoders.py
+  - lib\yahboom\yahboom_imu_accel.py
   - lib\yahboom\yahboom_imu_attitude.py
   - lib\yahboom\yahboom_protocol.py
   - lib\yahboom\yahboom_rx_parser.py

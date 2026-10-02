@@ -11,6 +11,7 @@ from lib.yahboom.yahboom_protocol import (
 )
 from lib.yahboom.yahboom_battery import YahboomBattery
 from lib.yahboom.yahboom_rx_parser import YahboomRxParser
+from lib.yahboom.yahboom_imu_accel import YahboomImuAccel
 from lib.yahboom.yahboom_imu_attitude import YahboomImuAttitude
 from lib.yahboom.yahboom_config import YahboomConfig
 from lib.motion.byte_transport import ByteTransport
@@ -164,6 +165,11 @@ class YahboomDriveBoard:
     """Cached attitude (no USB)."""
     with self._io_lock:
       return self._parser.last_imu
+
+  def imu_accel(self) -> YahboomImuAccel | None:
+    """Cached accelerometer (no USB; from MPU/ICM raw auto-report)."""
+    with self._io_lock:
+      return self._parser.last_accel
 
   def close(self) -> None:
     """Stop motors and close transport."""

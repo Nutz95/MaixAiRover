@@ -8,8 +8,11 @@ from lib.ball_follow.ball_follow_runtime import BallFollowRuntime
 from lib.config.config_store import ConfigStore
 from lib.input.teleop_control_thread import TeleopControlThread
 from lib.input.xbox_input_service import XboxInputService
+from lib.motion.encoder_counts import EncoderCounts
 from lib.motion.rover_motion_client import RoverMotionClient
+from lib.obstacle_nav.obstacle_nav_runtime import ObstacleNavRuntime
 from lib.ui.hud_instruments import HudInstruments, from_telem, from_yahboom
+from lib.ui.overlay_session import OverlaySession
 from lib.yahboom.maix_battery_reader import MaixBatteryReader
 from lib.yahboom.yahboom_drive_board import YahboomDriveBoard
 from lib.esp.esp_debug_session import EspDebugSession
@@ -36,6 +39,8 @@ class TeleopTickHandler:
     config_max_speed: int,
     speed_step: int,
     send_interval_ms: int,
+    obstacle: ObstacleNavRuntime | None = None,
+    overlays: OverlaySession | None = None,
   ) -> None:
     """Wire dependencies used on each teleop tick."""
     self._config_store = config_store
@@ -46,6 +51,8 @@ class TeleopTickHandler:
     self._maix_battery = maix_battery
     self._yahboom_board = yahboom_board
     self._esp_debug = esp_debug
+    self._obstacle = obstacle
+    self._overlays = overlays
     self.session_max_speed = session_max_speed
     self._config_max_speed = config_max_speed
     self._speed_step = speed_step
@@ -55,15 +62,21 @@ class TeleopTickHandler:
     self._hud_instruments: HudInstruments = from_telem(None)
     self._maix_battery_pct: int | None = None
 
+  def set_overlays(self, overlays: OverlaySession) -> None:
+    """Attach overlay session after construction (circular wiring)."""
+    self._overlays = overlays
+
   def tick(self) -> None:
     """One control-thread iteration of config / ball / speed / sensors."""
     self._apply_rover_config()
+    self._handle_modal_confirm()
     if self._xbox.consume_mode_toggle():
       self._ball.toggle_mode()
     if self._xbox.consume_color_toggle():
       self._ball.cycle_color()
     self._handle_speed_bumpers()
     self._refresh_hud_sensors()
+    self._tick_obstacle_nav()
 
   def hud_instruments(self) -> HudInstruments:
     """Return the last cached instruments snapshot (draw path safe)."""
@@ -72,6 +85,45 @@ class TeleopTickHandler:
   def maix_battery_pct(self) -> int | None:
     """Return the last Maix battery percent, if known."""
     return self._maix_battery_pct
+
+  def _handle_modal_confirm(self) -> None:
+    if not self._xbox.consume_modal_confirm():
+      return
+    if self._overlays is None:
+      return
+    self._overlays.handle_modal_confirm()
+
+  def _tick_obstacle_nav(self) -> None:
+    if self._obstacle is None:
+      return
+    imu = None
+    accel = None
+    if self._yahboom_board is not None:
+      # Fresh RX every teleop tick — HUD sensor poll alone is too slow for stuck.
+      try:
+        self._yahboom_board.poll()
+      except Exception as poll_error:
+        print(f"obstacle: poll: {poll_error}")
+      imu = self._yahboom_board.imu_attitude()
+      accel = self._yahboom_board.imu_accel()
+    try:
+      encoders = self._rover.read_encoders()
+    except Exception as encoder_error:
+      print(f"obstacle: encoders: {encoder_error}")
+      encoders = EncoderCounts()
+    override = self._obstacle.tick(imu=imu, accel=accel, encoders=encoders)
+    if override is None:
+      return
+    self._obstacle.note_drive_command(override)
+    try:
+      self._rover.send_joystick(
+        override.axis_strafe,
+        override.axis_forward,
+        override.axis_spin,
+        override.axis_pivot,
+      )
+    except Exception as drive_error:
+      print(f"obstacle calib drive: {drive_error}")
 
   def _apply_rover_config(self) -> None:
     reloaded = self._config_store.reload_if_changed()
@@ -86,6 +138,8 @@ class TeleopTickHandler:
     self._control.set_send_interval_ms(self._send_interval_ms)
     if reloaded:
       self._ball.apply_config(config)
+      if self._obstacle is not None:
+        self._obstacle.apply_config(config)
 
   def _handle_speed_bumpers(self) -> None:
     snap = self._xbox.snapshot()

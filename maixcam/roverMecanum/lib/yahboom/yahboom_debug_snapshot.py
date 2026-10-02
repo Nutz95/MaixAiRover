@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from lib.motion.encoder_counts import EncoderCounts
 from lib.yahboom.yahboom_battery import YahboomBattery
+from lib.yahboom.yahboom_imu_accel import YahboomImuAccel
 from lib.yahboom.yahboom_imu_attitude import YahboomImuAttitude
 
 
@@ -17,4 +18,5 @@ class YahboomDebugSnapshot:
   status: str
   battery: YahboomBattery | None
   imu: YahboomImuAttitude | None
+  accel: YahboomImuAccel | None
   encoders: EncoderCounts

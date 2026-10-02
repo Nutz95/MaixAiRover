@@ -47,6 +47,12 @@ class HudComposer:
       a._disp.show(frame)
       return
 
+    if a._obstacle is not None and a._obstacle.is_calib_open():
+      frame = image.Image(a._disp.width(), a._disp.height(), bg=image.COLOR_BLACK)
+      a._obstacle.calib_panel.draw(frame, a._obstacle.calib_snapshot())
+      a._disp.show(frame)
+      return
+
     if debug_open:
       frame = image.Image(a._disp.width(), a._disp.height(), bg=image.COLOR_BLACK)
       if yahboom_snap is not None:
@@ -84,6 +90,8 @@ class HudComposer:
       motor_limit=a._motor_limit,
       ball_snapshot=ball_snap,
     )
+    if a._obstacle is not None and a._obstacle.show_stuck_overlay():
+      a._obstacle.stuck_panel.draw(frame, a._obstacle.stuck_report())
     a._disp.show(frame)
 
   @staticmethod

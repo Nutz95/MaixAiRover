@@ -65,7 +65,7 @@ class ChecklistPanel:
     )
     img.draw_rect(rect.x, rect.y, rect.width, rect.height, color, thickness=-1)
     img.draw_rect(rect.x, rect.y, rect.width, rect.height, image.COLOR_WHITE, thickness=2)
-    label = "OK" if enabled else "…"
+    label = "OK / A" if enabled else "…"
     size = image.string_size(label, scale=1.5, thickness=1)
     img.draw_string(
       rect.x + (rect.width - size.width()) // 2,

@@ -96,6 +96,11 @@ class YahboomDebugPanel:
     else:
       lines.append(f"yaw {imu.yaw_deg:.0f}")
       lines.append(f"att P{imu.pitch_deg:+.0f} R{imu.roll_deg:+.0f}")
+    accel = snap.accel
+    if accel is None:
+      lines.append("accel — (no MPU/ICM raw)")
+    else:
+      lines.append(f"a {accel.ax:+.2f} {accel.ay:+.2f} {accel.az:+.2f}")
     enc = snap.encoders
     lines.append(f"enc FL/FR {enc.m1} / {enc.m2}")
     lines.append(f"enc RL/RR {enc.m3} / {enc.m4}")
