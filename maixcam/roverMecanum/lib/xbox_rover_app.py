@@ -291,6 +291,13 @@ class XboxRoverApp:
         return
     if self._obstacle is not None and self._obstacle.blocks_teleop():
       return
+    if self._obstacle is not None and self._obstacle.should_cut_drive():
+      self._obstacle.note_drive_command(DriveOutput())
+      try:
+        self._rover.send_stop()
+      except Exception as stop_error:
+        print(f"drive tip-cut: {stop_error}")
+      return
     if self._debug is not None and self._debug.is_open():
       return
     if self._yahboom_debug is not None and self._yahboom_debug.is_open():

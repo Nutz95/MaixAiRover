@@ -90,6 +90,13 @@ class OverlayTouchRouter:
       elif a._ui.connect_rect().contains(action.x, action.y):
         a._xbox.start_connect()
       return
+    ball_follow_on = False
+    try:
+      ball_follow_on = bool(a._ball.snapshot().enabled)
+    except Exception as ball_snap_error:
+      print(f"touch: ball snapshot: {ball_snap_error}")
+    if ball_follow_on:
+      return
     if snap.connected and a._ui.debug_rect().contains(action.x, action.y):
       a._overlays.open_debug()
       return

@@ -6,6 +6,7 @@ from lib.obstacle_nav.collision_side import CollisionSide
 from lib.obstacle_nav.imu_chassis_frame import ImuChassisFrame
 from lib.obstacle_nav.motion_probe_sample import MotionProbeSample
 from lib.obstacle_nav.obstacle_nav_settings import ObstacleNavSettings
+from lib.obstacle_nav.stuck_cause import StuckCause
 from lib.obstacle_nav.stuck_detector import StuckDetector
 from lib.obstacle_nav.stuck_level import StuckLevel
 from lib.obstacle_nav.stuck_report import StuckReport
@@ -79,6 +80,8 @@ def test_idle_pitch_tip_is_detected() -> None:
   assert report.level == StuckLevel.STUCK
   assert report.side == CollisionSide.FRONT
   assert "pitch" in report.detail
+  assert report.cause == StuckCause.ATTITUDE_TIP
+  assert report.cuts_drive()
 
 
 def test_small_pitch_bob_while_driving_ok() -> None:
@@ -116,6 +119,8 @@ def test_violent_crash_is_instant() -> None:
   assert report.level == StuckLevel.STUCK
   assert report.side == CollisionSide.FRONT
   assert "crash" in report.detail
+  assert report.cause == StuckCause.CRASH
+  assert not report.cuts_drive()
 
 
 def test_soft_impact_when_enabled_needs_hold() -> None:

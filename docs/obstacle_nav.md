@@ -1,8 +1,8 @@
-# Obstacle awareness (IMU calib + stuck HUD)
+# Obstacle awareness (IMU + vision strategy)
 
-After the pad connects and the peripheral checklist is dismissed (**touch OK** or **Xbox A**), an optional **IMU calibration** wizard runs: rest → creep forward/reverse → spin CW/CCW. Confirm steps with **A** / OK, or **Skip** to keep default signs.
+After the pad connects and the peripheral checklist is dismissed (**touch OK** or **Xbox A**), an optional **IMU calibration** wizard runs: rest → creep forward/reverse → spin CW/CCW. Confirm with **A** / OK, or **Skip** for defaults.
 
-## What it learns
+## What calib learns
 
 - Rest `pitch0` / `roll0`
 - Pitch / yaw / forward-accel signs
@@ -10,29 +10,36 @@ After the pad connects and the peripheral checklist is dismissed (**touch OK** o
 
 When the script reaches **DONE**, stuck detection is armed immediately.
 
-## Stuck overlay
+## Stuck overlay (failsafe)
 
-Informational only (no auto unstick yet). Card shows estimated contact side.
+Informational only for now (no auto unstick maneuvers yet). Card shows estimated contact side.
 
 Detection rules:
 
-- **Attitude tip** — pitch/roll vs rest calib (works even with sticks idle: lift nose/tail/side)
-- **Crash** — short opposing accel ≥ `accel_crash_mps2` (violent hit, instant)
-- **Soft impact** — off by default (`soft_impact_enabled`); was causing cruise false positives
-- **Slip** — off by default
-- **Yaw stall** — spin commanded but attitude yaw barely moves
+- **Attitude tip** — pitch/roll vs rest (works with sticks idle)
+- **Crash** — short opposing accel ≥ `accel_crash_mps2` (instant)
+- **Soft impact** / **slip** — off by default (mecanum vibe false-triggers)
 
-We only watch the **sum** of encoder ticks (motion yes/no), not per-wheel mismatch. Yahboom `set_car_motion` already runs closed-loop PID per motor.
+Probe TCP (Windows): `python tools/obstacle_probe_listen.py <maix-ip>`
 
-## Probe log (TCP)
+## Strategy without ToF / LiDAR
 
-`nc` = **netcat** (Unix). On Windows PowerShell it is usually missing. Use:
+Camera is **tilted down** (ball on floor). Lower image = ground + ball; mid = near obstacles ahead.
 
-```powershell
-python tools/obstacle_probe_listen.py 192.168.1.100
-```
+HUD **ROI guides** (`show_roi_guides`):
 
-(Replace with the MaixCAM IP. Port default 9400.)
+- **Green** horizontal = ground split — align the real floor here
+- **Blue wash + rails + mid line** = obstacle band (left / center / right halves) — this is where depth/OF will look
+
+Collision IMU is **on** (`stuck_detection_enabled`). **Attitude tip** (lift nose/tail/side) **cuts drive** (motors stop). Crash / other causes still show the HUD card only until tuned.
+
+| Layer | Source | Use |
+| --- | --- | --- |
+| Primary obstacles | DepthAnything async, low-res, obstacle ROI crop | near/mid/far bands → avoidance |
+| Secondary | Sparse LK + gyro derotation | ground crop slip; obstacle crop TTC / L-R balance |
+| Failsafe | This IMU stuck HUD | tip / crash when vision misses |
+
+Optical flow is **not** the main obstacle sensor. Depth bands drive avoidance v0; OF improves ego-motion / timing cues. Full planner (occupancy + DWA) comes after bands work. See [plan.md](plan.md) and [roadmap.md](roadmap.md).
 
 ## Config (`obstacle_nav`)
 
@@ -46,14 +53,17 @@ python tools/obstacle_probe_listen.py 192.168.1.100
 | `impact_hold_ms` | 150 | Soft-impact hold time |
 | `slip_enabled` | false | Slip off — vibe false-triggers |
 | `probe_tcp_port` | 9400 | TCP text probe (`0` = off) |
+| `stuck_detection_enabled` | true | IMU stuck HUD; tip cuts drive |
+| `show_roi_guides` | true | Thin ground / obstacle HUD lines |
+| `ground_top_ratio` | 0.50 | Y split at mid-frame: below = ground |
+| `obstacle_top_ratio` | 0.18 | Top of obstacle band |
+| `obstacle_left_ratio` / `obstacle_right_ratio` | 0.15 / 0.85 | Obstacle corridor sides |
 
 ## Next: heading hold (planned)
 
-Straight drive currently drifts (mecanum slip). Planned fix — **not built yet**:
+Straight drive drifts (mecanum slip). Planned:
 
-1. On forward/back with spin stick near zero, latch yaw at bout start
-2. P (then PI) on yaw error → add a small `axis_spin` correction
+1. Latch yaw when forward/back with spin stick near zero
+2. P (then PI) on yaw error → small `axis_spin` correction
 3. Disable while user commands spin / strafe
 4. Tunables in `config.json` (`heading_hold_gain`, deadband)
-
-Needs the same TCP probe for yaw error while tuning.

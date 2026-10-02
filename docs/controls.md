@@ -13,11 +13,18 @@ Default mapping matches the previous Keyestudio mecanum rover (revision 4).
 | Left stick X | Pivot / yaw blend |
 | D-pad | Full-axis presets (incl. diagonals) |
 | LB / RB | Decrease / increase session max speed |
-| A | Stop |
+| A | Stop (**or Confirm** when checklist / IMU calib modal is open) |
 | **View / Select** | Toggle **ball-follow** mode |
 | **Menu / Start** | Cycle ball color (green ↔ red) |
 
 Strafe comes from `trigger_diff` = RT − LT (both pressed → cancel). Config: `mapping.axes.drive_strafe`.
+
+## Post-connect modals
+
+1. **Peripherals checklist** — dismiss with touch **OK** or **A**.
+2. **IMU calibration** (if `obstacle_nav.calib_after_connect`) — scripted creep/spin; **A**/OK confirms intro & done; **Skip** keeps defaults. See [obstacle_nav.md](obstacle_nav.md).
+
+After that, stuck/collision awareness runs in all modes and may show a top-down contact overlay.
 
 ## Ball-follow
 
@@ -67,6 +74,7 @@ Once Xbox is paired/connected, the camera overlay shows:
 - A / B / X / Y cluster (lit when pressed)
 - Speed bar with LB / RB highlight
 - Dual battery bars (CAM % / ROV %)
-- DISC to disconnect
+- DISC to disconnect (hidden while ball-follow is on — use View/Select to leave follow first)
+- DBG panel (also hidden in ball-follow)
 
 Disconnected: PAIR + CONNECT only (no on-screen motor pad).

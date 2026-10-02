@@ -7,6 +7,7 @@ from lib.obstacle_nav.collision_side import CollisionSide
 from lib.obstacle_nav.imu_chassis_frame import ImuChassisFrame
 from lib.obstacle_nav.motion_probe_sample import MotionProbeSample
 from lib.obstacle_nav.obstacle_nav_settings import ObstacleNavSettings
+from lib.obstacle_nav.stuck_cause import StuckCause
 from lib.obstacle_nav.stuck_level import StuckLevel
 from lib.obstacle_nav.stuck_probe import StuckProbe
 from lib.obstacle_nav.stuck_report import StuckReport
@@ -199,6 +200,7 @@ class StuckDetector:
           level=StuckLevel.STUCK,
           side=impact_hit,
           detail=f"crash {impact_detail}",
+          cause=StuckCause.CRASH,
         )
       return StuckReport.clear()
 
@@ -207,15 +209,16 @@ class StuckDetector:
 
     side = CollisionSide.NONE
     detail = ""
+    cause = StuckCause.NONE
     bout_ms = newest.timestamp_ms - self._bout_started_ms
     bout_enc = abs(newest.encoder_sum - self._bout_enc_start)
 
     if tip.side != CollisionSide.NONE:
-      side = tip.side
-      detail = tip.detail
-    elif impact_hit != CollisionSide.NONE and impact_mag >= self._settings.accel_crash_mps2:
+      return tip
+    if impact_hit != CollisionSide.NONE and impact_mag >= self._settings.accel_crash_mps2:
       side = impact_hit
       detail = f"crash {impact_detail}"
+      cause = StuckCause.CRASH
     elif (
       self._settings.soft_impact_enabled
       and impact_hit != CollisionSide.NONE
@@ -225,6 +228,7 @@ class StuckDetector:
     ):
       side = impact_hit
       detail = impact_detail
+      cause = StuckCause.SOFT_IMPACT
 
     if (
       side == CollisionSide.NONE
@@ -247,6 +251,7 @@ class StuckDetector:
         f" horiz={self._bout_max_horizontal:.2f}"
         f" dv={self._bout_delta_v:+.2f}"
       )
+      cause = StuckCause.SLIP
 
     if side == CollisionSide.NONE and abs(cmd_spin) > cmd_deadband:
       yaw_delta = self._yaw_delta_deg(oldest.yaw_deg, newest.yaw_deg)
@@ -254,14 +259,18 @@ class StuckDetector:
       if abs(yaw_delta) < self._settings.yaw_error_deg * 0.25 and wheels_moving:
         side = CollisionSide.UNKNOWN
         detail = f"yaw stall ({yaw_delta:.1f} deg)"
+        cause = StuckCause.YAW
       elif yaw_delta * expected < 0 and abs(yaw_delta) >= self._settings.yaw_error_deg * 0.5:
         side = CollisionSide.LEFT if cmd_spin > 0 else CollisionSide.RIGHT
         detail = f"yaw wrong-way {yaw_delta:.1f}"
+        cause = StuckCause.YAW
 
     if side == CollisionSide.NONE:
       return StuckReport.clear()
 
-    return StuckReport(level=StuckLevel.STUCK, side=side, detail=detail or "stuck")
+    return StuckReport(
+      level=StuckLevel.STUCK, side=side, detail=detail or "stuck", cause=cause,
+    )
 
   def _attitude_tip(self, pitch_signed: float, roll_delta: float) -> StuckReport:
     """Tip vs rest pose — no stick / encoder requirement."""
@@ -271,6 +280,7 @@ class StuckDetector:
         level=StuckLevel.STUCK,
         side=side,
         detail=f"pitch {pitch_signed:.1f}",
+        cause=StuckCause.ATTITUDE_TIP,
       )
     if abs(roll_delta) >= self._settings.roll_bump_deg:
       side = CollisionSide.RIGHT if roll_delta > 0 else CollisionSide.LEFT
@@ -278,6 +288,7 @@ class StuckDetector:
         level=StuckLevel.STUCK,
         side=side,
         detail=f"roll {roll_delta:.1f}",
+        cause=StuckCause.ATTITUDE_TIP,
       )
     return StuckReport.clear()
 

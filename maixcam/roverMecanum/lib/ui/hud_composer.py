@@ -90,6 +90,8 @@ class HudComposer:
       motor_limit=a._motor_limit,
       ball_snapshot=ball_snap,
     )
+    if a._obstacle is not None:
+      a._obstacle.draw_roi_guides(frame)
     if a._obstacle is not None and a._obstacle.show_stuck_overlay():
       a._obstacle.stuck_panel.draw(frame, a._obstacle.stuck_report())
     a._disp.show(frame)

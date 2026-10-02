@@ -129,9 +129,13 @@ files:
   - lib\obstacle_nav\imu_calib_wizard.py
   - lib\obstacle_nav\imu_chassis_frame.py
   - lib\obstacle_nav\motion_probe_sample.py
+  - lib\obstacle_nav\nav_roi_guide_panel.py
+  - lib\obstacle_nav\nav_roi_layout.py
+  - lib\obstacle_nav\nav_roi_pixel_box.py
   - lib\obstacle_nav\obstacle_nav_runtime.py
   - lib\obstacle_nav\obstacle_nav_settings.py
   - lib\obstacle_nav\obstacle_probe_hub.py
+  - lib\obstacle_nav\stuck_cause.py
   - lib\obstacle_nav\stuck_detector.py
   - lib\obstacle_nav\stuck_level.py
   - lib\obstacle_nav\stuck_overlay_panel.py

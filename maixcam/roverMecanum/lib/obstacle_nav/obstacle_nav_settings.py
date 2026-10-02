@@ -31,7 +31,19 @@ class ObstacleNavSettings:
     self.slip_enabled = as_bool(block, "slip_enabled", False)
     self.probe_log_ms = max(200, as_int(block, "probe_log_ms", 500))
     self.probe_tcp_port = max(0, as_int(block, "probe_tcp_port", 9400))
+    # Collision HUD / detector (false positives — park while building vision).
+    self.stuck_detection_enabled = as_bool(block, "stuck_detection_enabled", True)
     self.calib_creep_axis = max(500, as_int(block, "calib_creep_axis", 7000))
     self.calib_spin_axis = max(500, as_int(block, "calib_spin_axis", 9000))
     self.calib_motion_ms = max(50, as_int(block, "calib_motion_ms", 600))
     self.calib_rest_ms = max(50, as_int(block, "calib_rest_ms", 800))
+    # Tilted-cam ROI: below ground_top = ground; obstacle band above it.
+    self.show_roi_guides = as_bool(block, "show_roi_guides", True)
+    self.ground_top_ratio = self._ratio(block, "ground_top_ratio", 0.50)
+    self.obstacle_top_ratio = self._ratio(block, "obstacle_top_ratio", 0.18)
+    self.obstacle_left_ratio = self._ratio(block, "obstacle_left_ratio", 0.15)
+    self.obstacle_right_ratio = self._ratio(block, "obstacle_right_ratio", 0.85)
+
+  @staticmethod
+  def _ratio(block: dict, key: str, default: float) -> float:
+    return max(0.0, min(1.0, as_float(block, key, default)))

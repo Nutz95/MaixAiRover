@@ -96,9 +96,10 @@ class UiDrawer:
     ball_follow_on = bool(ball_snapshot is not None and ball_snapshot.enabled)
 
     if connected:
-      self._draw_bottom_bar(img)
-      self._draw_button(img, self.disconnect_rect(), "DISC", image.Color.from_rgb(180, 60, 40))
-      self._draw_button(img, self.debug_rect(), "DBG", image.Color.from_rgb(50, 90, 140))
+      if not ball_follow_on:
+        self._draw_bottom_bar(img)
+        self._draw_button(img, self.disconnect_rect(), "DISC", image.Color.from_rgb(180, 60, 40))
+        self._draw_button(img, self.debug_rect(), "DBG", image.Color.from_rgb(50, 90, 140))
       lb = state.buttons.get(ControllerButton.LB, False)
       rb = state.buttons.get(ControllerButton.RB, False)
       self._draw_speed_bar(img, max_speed, lb, rb, wheel_fl, wheel_fr, motor_limit)

@@ -44,16 +44,16 @@ class ObstacleProbeHub:
       for client in self._clients:
         try:
           client.close()
-        except OSError:
-          pass
+        except OSError as close_error:
+          print(f"obstacle probe hub: client close: {close_error}")
       self._clients.clear()
       listener = self._sock
       self._sock = None
     if listener is not None:
       try:
         listener.close()
-      except OSError:
-        pass
+      except OSError as close_error:
+        print(f"obstacle probe hub: listener close: {close_error}")
     thread = self._thread
     self._thread = None
     if thread is not None:
@@ -78,8 +78,8 @@ class ObstacleProbeHub:
           self._clients.remove(client)
         try:
           client.close()
-        except OSError:
-          pass
+        except OSError as close_error:
+          print(f"obstacle probe hub: dead client close: {close_error}")
 
   def _accept_loop(self) -> None:
     while not self._stop.is_set():
@@ -89,17 +89,21 @@ class ObstacleProbeHub:
       try:
         client, addr = listener.accept()
       except socket.timeout:
-        continue
-      except OSError:
+        client = None
+        addr = None
+      except OSError as accept_error:
+        print(f"obstacle probe hub: accept: {accept_error}")
         return
+      if client is None:
+        continue
       try:
         client.settimeout(0.0)
-      except OSError:
-        pass
+      except OSError as timeout_error:
+        print(f"obstacle probe hub: settimeout: {timeout_error}")
       with self._lock:
         self._clients.append(client)
       print(f"obstacle probe hub: client {addr[0]}:{addr[1]}")
       try:
         client.sendall(b"obstacle probe hub ready\n")
-      except OSError:
-        pass
+      except OSError as greet_error:
+        print(f"obstacle probe hub: greet: {greet_error}")

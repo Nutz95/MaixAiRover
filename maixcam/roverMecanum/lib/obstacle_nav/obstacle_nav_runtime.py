@@ -12,6 +12,8 @@ from lib.obstacle_nav.imu_calib_step import ImuCalibStep
 from lib.obstacle_nav.imu_calib_wizard import ImuCalibWizard
 from lib.obstacle_nav.imu_chassis_frame import ImuChassisFrame
 from lib.obstacle_nav.motion_probe_sample import MotionProbeSample
+from lib.obstacle_nav.nav_roi_guide_panel import NavRoiGuidePanel
+from lib.obstacle_nav.nav_roi_layout import NavRoiLayout
 from lib.obstacle_nav.obstacle_nav_settings import ObstacleNavSettings
 from lib.obstacle_nav.obstacle_probe_hub import ObstacleProbeHub
 from lib.obstacle_nav.stuck_detector import StuckDetector
@@ -33,6 +35,7 @@ class ObstacleNavRuntime:
     self._detector = StuckDetector(self._settings)
     self._calib_panel = ImuCalibPanel(width, height)
     self._stuck_panel = StuckOverlayPanel(width, height)
+    self._roi_guide_panel = NavRoiGuidePanel()
     self._report = StuckReport.clear()
     self._overlay_visible = False
     self._clear_since_ms: int | None = None
@@ -71,6 +74,16 @@ class ObstacleNavRuntime:
     """Return the stuck overlay panel."""
     return self._stuck_panel
 
+  def nav_roi_layout(self) -> NavRoiLayout:
+    """Return ROI layout for HUD guides and future depth/OF crops."""
+    return NavRoiLayout(self._settings)
+
+  def draw_roi_guides(self, frame) -> None:
+    """Paint ground / obstacle split lines when enabled."""
+    if not self._settings.enabled or not self._settings.show_roi_guides:
+      return
+    self._roi_guide_panel.draw(frame, self.nav_roi_layout())
+
   def is_calib_open(self) -> bool:
     """True while the IMU wizard owns the HUD."""
     return self._settings.enabled and self._wizard.is_active()
@@ -93,7 +106,15 @@ class ObstacleNavRuntime:
 
   def show_stuck_overlay(self) -> bool:
     """True when the top-down stuck card should paint."""
+    if not self._settings.stuck_detection_enabled:
+      return False
     return self._overlay_visible
+
+  def should_cut_drive(self) -> bool:
+    """True when attitude tip must stop motors (other stuck = HUD only)."""
+    if not self._settings.stuck_detection_enabled:
+      return False
+    return self._report.cuts_drive()
 
   def chassis_frame(self) -> ImuChassisFrame:
     """Return the active IMU chassis frame."""
@@ -198,7 +219,7 @@ class ObstacleNavRuntime:
         return None
       return override if override is not None else DriveOutput()
 
-    if self._ready_for_stuck:
+    if self._ready_for_stuck and self._settings.stuck_detection_enabled:
       sample = MotionProbeSample(
         timestamp_ms=now,
         pitch_deg=pitch,
@@ -227,6 +248,8 @@ class ObstacleNavRuntime:
         )
       self._maybe_log_probe(now)
       self._update_overlay_visibility(now)
+      if self.should_cut_drive():
+        return DriveOutput()
     return None
 
   def _maybe_log_probe(self, now_ms: int) -> None:
